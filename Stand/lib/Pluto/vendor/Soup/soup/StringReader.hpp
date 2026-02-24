@@ -12,18 +12,13 @@ NAMESPACE_SOUP
 		std::string data;
 		size_t offset = 0;
 
-		StringReader(Endian endian = ENDIAN_LITTLE) noexcept
-			: Reader(endian)
+		StringReader() noexcept
+			: Reader()
 		{
 		}
 
-		StringReader(std::string&& data, Endian endian = ENDIAN_LITTLE) noexcept
-			: Reader(endian), data(std::move(data))
-		{
-		}
-
-		StringReader(std::string&& data, bool little_endian) noexcept
-			: Reader(little_endian), data(std::move(data))
+		StringReader(std::string&& data) noexcept
+			: Reader(), data(std::move(data))
 		{
 		}
 
@@ -84,6 +79,15 @@ NAMESPACE_SOUP
 				return true;
 			}
 			return false;
+		}
+
+		const void* getMemoryView(size_t size) const noexcept final
+		{
+			if (this->offset + size <= this->data.size())
+			{
+				return this->data.data() + this->offset;
+			}
+			return nullptr;
 		}
 	};
 }

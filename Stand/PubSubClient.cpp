@@ -1,6 +1,5 @@
 #include "PubSubClient.hpp"
 
-#include <soup/DelayedCtor.hpp>
 #include <soup/EstablishWebSocketConnectionTask.hpp>
 #include <soup/MaintainWebSocketConnectionTask.hpp>
 #include <soup/ObfusString.hpp>

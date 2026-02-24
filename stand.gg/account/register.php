@@ -63,7 +63,7 @@
 	<script>
 		if(typeof localStorage.getItem("account_id")=="string")
 		{
-			location.href=".";
+			location.href="/account/";
 		}
 
 		let register_pending = false;

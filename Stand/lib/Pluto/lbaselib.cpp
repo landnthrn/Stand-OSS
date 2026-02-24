@@ -9,11 +9,11 @@
 
 #include <ctype.h>
 #include <locale.h>
+#include <math.h> // HUGE_VAL
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include <chrono>
 #include <thread>
 #include <unordered_set>
 
@@ -73,15 +73,7 @@ static int luaB_wcall (lua_State *L) {
   const auto og_warnf = G(L)->warnf;
 
   /* allocate buffer */
-  auto str = new (lua_newuserdata(L, sizeof(std::string))) std::string{};
-  lua_newtable(L);
-  lua_pushliteral(L, "__gc");
-  lua_pushcfunction(L, [](lua_State *L) -> int {
-    std::destroy_at<>(reinterpret_cast<std::string*>(lua_touserdata(L, -1)));
-    return 0;
-  });
-  lua_settable(L, -3);
-  lua_setmetatable(L, -2);
+  auto str = pluto_newclassinst(L, std::string);
 
   /* write all warnings to buffer */
   lua_setwarnf(L, [](void *ud, const char *message, int tocont) {
@@ -229,7 +221,7 @@ static int luaB_rawget (lua_State *L) {
 
 static int luaB_rawset (lua_State *L) {
   luaL_checktype(L, 1, LUA_TTABLE);
-#ifndef PLUTO_DISABLE_TABLE_FREEZING
+#ifdef PLUTO_ENABLE_TABLE_FREEZING
   lua_erriffrozen(L, 1);
 #endif
   luaL_checkany(L, 2);
@@ -257,11 +249,11 @@ static int pushmode (lua_State *L, int oldmode) {
 
 static int luaB_collectgarbage (lua_State *L) {
   static const char *const opts[] = {"stop", "restart", "collect",
-    "count", "step", "setpause", "setstepmul",
-    "isrunning", "generational", "incremental", NULL};
-  static const int optsnum[] = {LUA_GCSTOP, LUA_GCRESTART, LUA_GCCOLLECT,
-    LUA_GCCOUNT, LUA_GCSTEP, LUA_GCSETPAUSE, LUA_GCSETSTEPMUL,
-    LUA_GCISRUNNING, LUA_GCGEN, LUA_GCINC};
+    "count", "step", "isrunning", "generational", "incremental",
+    "param", NULL};
+  static const char optsnum[] = {LUA_GCSTOP, LUA_GCRESTART, LUA_GCCOLLECT,
+    LUA_GCCOUNT, LUA_GCSTEP, LUA_GCISRUNNING, LUA_GCGEN, LUA_GCINC,
+    LUA_GCPARAM};
   int o = optsnum[luaL_checkoption(L, 1, "collect", opts)];
   switch (o) {
     case LUA_GCCOUNT: {
@@ -272,18 +264,10 @@ static int luaB_collectgarbage (lua_State *L) {
       return 1;
     }
     case LUA_GCSTEP: {
-      int step = (int)luaL_optinteger(L, 2, 0);
-      int res = lua_gc(L, o, step);
+      lua_Integer n = luaL_optinteger(L, 2, 0);
+      int res = lua_gc(L, o, (int)n);
       checkvalres(res);
       lua_pushboolean(L, res);
-      return 1;
-    }
-    case LUA_GCSETPAUSE:
-    case LUA_GCSETSTEPMUL: {
-      int p = (int)luaL_optinteger(L, 2, 0);
-      int previous = lua_gc(L, o, p);
-      checkvalres(previous);
-      lua_pushinteger(L, previous);
       return 1;
     }
     case LUA_GCISRUNNING: {
@@ -293,15 +277,22 @@ static int luaB_collectgarbage (lua_State *L) {
       return 1;
     }
     case LUA_GCGEN: {
-      int minormul = (int)luaL_optinteger(L, 2, 0);
-      int majormul = (int)luaL_optinteger(L, 3, 0);
-      return pushmode(L, lua_gc(L, o, minormul, majormul));
+      return pushmode(L, lua_gc(L, o));
     }
     case LUA_GCINC: {
-      int pause = (int)luaL_optinteger(L, 2, 0);
-      int stepmul = (int)luaL_optinteger(L, 3, 0);
-      int stepsize = (int)luaL_optinteger(L, 4, 0);
-      return pushmode(L, lua_gc(L, o, pause, stepmul, stepsize));
+      return pushmode(L, lua_gc(L, o));
+    }
+    case LUA_GCPARAM: {
+      static const char *const params[] = {
+        "minormul", "majorminor", "minormajor",
+        "pause", "stepmul", "stepsize", NULL};
+      static const char pnum[] = {
+        LUA_GCPMINORMUL, LUA_GCPMAJORMINOR, LUA_GCPMINORMAJOR,
+        LUA_GCPPAUSE, LUA_GCPSTEPMUL, LUA_GCPSTEPSIZE};
+      int p = pnum[luaL_checkoption(L, 2, NULL, params)];
+      lua_Integer value = luaL_optinteger(L, 3, -1);
+      lua_pushinteger(L, lua_gc(L, o, p, (int)value));
+      return 1;
     }
     default: {
       int res = lua_gc(L, o);
@@ -358,9 +349,7 @@ static int luaB_pairs (lua_State *L) {
 /*
 ** Traversal function for 'ipairs'
 */
-#define ipairsaux luaB_ipairsaux
-LUAI_FUNC int ipairsaux (lua_State *L);
-int ipairsaux (lua_State *L) {
+static int ipairsaux (lua_State *L) {
   lua_Integer i = luaL_checkinteger(L, 2);
   i = luaL_intop(+, i, 1);
   lua_pushinteger(L, i);
@@ -398,9 +387,17 @@ static int load_aux (lua_State *L, int status, int envidx) {
 }
 
 
+static const char *getMode (lua_State *L, int idx) {
+  const char *mode = luaL_optstring(L, idx, "bt");
+  if (strchr(mode, 'B') != NULL)  /* Lua code cannot use fixed buffers */
+    luaL_argerror(L, idx, "invalid mode");
+  return mode;
+}
+
+
 static int luaB_loadfile (lua_State *L) {
   const char *fname = luaL_optstring(L, 1, NULL);
-  const char *mode = luaL_optstring(L, 2, NULL);
+  const char *mode = getMode(L, 2);
   int env = (!lua_isnone(L, 3) ? 3 : 0);  /* 'env' index or 0 if no 'env' */
   int status = luaL_loadfilex(L, fname, mode);
   return load_aux(L, status, env);
@@ -457,7 +454,7 @@ static int luaB_load (lua_State *L) {
 #else
   const char *s = lua_tolstring(L, 1, &l);
 #endif
-  const char *mode = luaL_optstring(L, 3, "bt");
+  const char *mode = getMode(L, 3);
   int env = (!lua_isnone(L, 4) ? 4 : 0);  /* 'env' index or 0 if no 'env' */
 #ifndef PLUTO_DISABLE_UNMODERATED_LOAD
   if (s != NULL) {  /* loading a string? */
@@ -499,7 +496,7 @@ static int luaB_dofile (lua_State *L) {
 }
 
 
-static int luaB_assert (lua_State *L) {
+int luaB_assert (lua_State *L) {
   if (l_likely(lua_toboolean(L, 1)))  /* condition is true? */
     return lua_gettop(L);  /* return all arguments */
   else {  /* error */
@@ -594,7 +591,7 @@ static int luaB_newuserdata (lua_State *L) {
 
 
 TValue *index2value (lua_State *L, int idx);
-void addquoted (luaL_Buffer *b, const char *s, size_t len);
+void addquoted (luaL_Buffer *b, const char *s, size_t len, bool must_be_valid_utf8);
 
 struct FuncDumpWriter {
   int init;
@@ -611,17 +608,37 @@ struct FuncDumpWriter {
   }
 };
 
-static void luaB_dumpvar_impl (lua_State *L, int indents, std::unordered_set<Table*> parents, bool is_export, bool is_key = false) {
+static void luaB_dumpvar_impl (lua_State *L, std::string& dump, int indents, const std::unordered_set<Table*>& parents_base, bool is_export, bool is_key = false) {
   switch (lua_type(L, -1)) {
     default:
       if (is_export) {
         luaL_error(L, luaO_pushfstring(L, "can not export variables of type %s", ttypename(lua_type(L, -1))));
       }
       [[fallthrough]];
-    case LUA_TNUMBER:
     case LUA_TBOOLEAN:
     case LUA_TNIL:
-      luaL_tolstring(L, -1, NULL);
+      dump.append(luaL_tolstring(L, -1, NULL));
+      lua_pop(L, 1);
+      return;
+
+    case LUA_TNUMBER:
+      if (is_export && !lua_isinteger(L, -1)) {
+        auto n = lua_tonumber(L, -1);
+        if (n == (lua_Number)HUGE_VAL) {
+          dump.append("math.huge");
+          return;
+        }
+        if (n == -(lua_Number)HUGE_VAL) {
+          dump.append("-math.huge");
+          return;
+        }
+        if (n != n) {
+          dump.append("0/0");
+          return;
+        }
+      }
+      dump.append(luaL_tolstring(L, -1, NULL));
+      lua_pop(L, 1);
       return;
 
     case LUA_TSTRING: {
@@ -635,8 +652,10 @@ static void luaB_dumpvar_impl (lua_State *L, int indents, std::unordered_set<Tab
         luaL_addvalue(&b);
         luaL_addstring(&b, ") ");
       }
-      addquoted(&b, s, l);
+      addquoted(&b, s, l, true);
       luaL_pushresult(&b);
+      dump.append(lua_tostring(L, -1));
+      lua_pop(L, 1);
       return;
     }
 
@@ -658,57 +677,76 @@ static void luaB_dumpvar_impl (lua_State *L, int indents, std::unordered_set<Tab
         else {
           luaL_addstring(&b, "load");
         }
-        addquoted(&b, s, l);
+        addquoted(&b, s, l, true);
         luaL_pushresult(&b);
+        dump.append(lua_tostring(L, -1));
+        lua_pop(L, 1);
         return;
       }
       else if (is_export)
         luaL_error(L, "Can't export C function");
-      luaL_tolstring(L, -1, NULL);
+      dump.append(luaL_tolstring(L, -1, NULL));
+      lua_pop(L, 1);
       return;
     }
 
     case LUA_TTABLE:;
   }
   Table *h = hvalue(index2value(L, -1));
-  if (indents != 1 && parents.count(h)) {
+  if (indents != 1 && parents_base.count(h)) {
     if (is_export) {
       luaL_error(L, "Can't export recursive table");
     }
-    lua_pushstring(L, "*RECURSION*");
+    dump.append("*RECURSION*");
     return;
   }
+  lua_checkstack(L, 7);
+  dump.push_back('{');
+  std::unordered_set<Table*>& parents = *pluto_newclassinst(L, std::unordered_set<Table*>, parents_base);
   parents.emplace(h);
-  std::string dump(1, '{');
+  lua_pushvalue(L, -2);
   lua_pushnil(L);
   bool empty = true;
   while (lua_next(L, -2)) {
     if (empty) {
       empty = false;
+      if (!is_export && luaL_getmetafield(L, -3, "__name") != LUA_TNIL) {
+        dump.append(" -- ");
+        dump.append(luaL_tolstring(L, -1, NULL));
+        lua_pop(L, 2);
+      }
       dump.push_back('\n');
     }
-
     dump.append(indents, '\t');
     dump.push_back('[');
+
     lua_pushvalue(L, -2);
-    luaB_dumpvar_impl(L, indents + 1, parents, is_export, true);
-    dump.append(lua_tostring(L, -1));
-    lua_pop(L, 2);
+    luaE_incCstack(L);
+    luaB_dumpvar_impl(L, dump, indents + 1, parents, is_export, true);
+    L->nCcalls--;
+    lua_pop(L, 1);
     dump.append("] = ");
 
     lua_pushvalue(L, -1);
-    luaB_dumpvar_impl(L, indents + 1, parents, is_export);
-    dump.append(lua_tostring(L, -1));
+    luaE_incCstack(L);
+    luaB_dumpvar_impl(L, dump, indents + 1, parents, is_export);
+    L->nCcalls--;
     lua_pop(L, 2);
     dump.append(",\n");
-
-    lua_pop(L, 1);
   }
-  if (!empty) {
+  if (empty) {
+    if (!is_export && luaL_getmetafield(L, -1, "__name") != LUA_TNIL) {
+      dump.append(" --[[ ");
+      dump.append(luaL_tolstring(L, -1, NULL));
+      dump.append(" ]] ");
+      lua_pop(L, 2);
+    }
+  }
+  else {
     dump.append(indents - 1, '\t');
   }
   dump.push_back('}');
-  pluto_pushstring(L, dump);
+  lua_pop(L, 2);
 }
 
 static int luaB_dumpvar (lua_State *L) {
@@ -716,22 +754,26 @@ static int luaB_dumpvar (lua_State *L) {
     lua_pushliteral(L, "(no value)");
   }
   else {
+    std::string& dump = *pluto_newclassinst(L, std::string);
+    std::unordered_set<Table*>& parents = *pluto_newclassinst(L, std::unordered_set<Table*>);
     lua_pushvalue(L, 1);
-    std::unordered_set<Table*> parents;
     if (ttistable(index2value(L, -1)))
       parents.emplace(hvalue(index2value(L, -1)));
-    luaB_dumpvar_impl(L, 1, std::move(parents), false);
+    luaB_dumpvar_impl(L, dump, 1, parents, false);
+    pluto_pushstring(L, dump);
   }
   return 1;
 }
 
 static int luaB_exportvar (lua_State *L) {
   luaL_checkany(L, 1);
+  std::string& dump = *pluto_newclassinst(L, std::string);
+  std::unordered_set<Table*>& parents = *pluto_newclassinst(L, std::unordered_set<Table*>);
   lua_pushvalue(L, 1);
-  std::unordered_set<Table*> parents;
   if (ttistable(index2value(L, -1)))
     parents.emplace(hvalue(index2value(L, -1)));
-  luaB_dumpvar_impl(L, 1, std::move(parents), true);
+  luaB_dumpvar_impl(L, dump, 1, parents, true);
+  pluto_pushstring(L, dump);
   return 1;
 }
 
@@ -766,7 +808,67 @@ static int luaB_range (lua_State *L) {
 }
 
 
+static int luaB_sdiv (lua_State *L) {
+  lua_pushinteger(L, luaL_checkinteger(L, 1) / luaL_checkinteger(L, 2));
+  return 1;
+}
+
+
+static int luaB_udiv (lua_State *L) {
+  lua_pushinteger(L, static_cast<lua_Unsigned>(luaL_checkinteger(L, 1)) / static_cast<lua_Unsigned>(luaL_checkinteger(L, 2)));
+  return 1;
+}
+
+
+static int luaB_smod (lua_State *L) {
+  lua_pushinteger(L, luaL_checkinteger(L, 1) % luaL_checkinteger(L, 2));
+  return 1;
+}
+
+
+static int luaB_umod (lua_State *L) {
+  lua_pushinteger(L, static_cast<lua_Unsigned>(luaL_checkinteger(L, 1)) % static_cast<lua_Unsigned>(luaL_checkinteger(L, 2)));
+  return 1;
+}
+
+
+static int luaB_callonce (lua_State *L) {
+  luaL_checktype(L, 1, LUA_TFUNCTION);
+
+  const auto caller_ci = L->ci->previous;
+  const auto call_pc = caller_ci->u.l.savedpc;
+  const auto call_id = static_cast<lua_Integer>(reinterpret_cast<uintptr_t>(call_pc));
+
+  lua_pushinteger(L, call_id);
+  if (lua_gettable(L, LUA_REGISTRYINDEX) <= LUA_TNIL) {
+    lua_pushinteger(L, call_id + 1);
+    if (lua_gettable(L, LUA_REGISTRYINDEX) <= LUA_TNIL) {
+      lua_pushvalue(L, 1);
+      lua_call(L, 0, 1);
+      if (lua_type(L, -1) <= LUA_TNIL) {
+        lua_pushinteger(L, call_id + 1);
+        lua_pushvalue(L, true);
+      }
+      else {
+        lua_pushinteger(L, call_id);
+        lua_pushvalue(L, -2);
+      }
+      lua_settable(L, LUA_REGISTRYINDEX);
+    }
+    else {
+      lua_pushnil(L);
+    }
+  }
+  return 1;
+}
+
+
 static const luaL_Reg base_funcs[] = {
+  {"callonce", luaB_callonce},
+  {"sdiv", luaB_sdiv},
+  {"udiv", luaB_udiv},
+  {"smod", luaB_smod},
+  {"umod", luaB_umod},
   {"range", luaB_range},
   {"compareversions", luaB_compareversions},
   {"exportvar", luaB_exportvar},
@@ -818,9 +920,6 @@ LUAMOD_API int luaopen_base (lua_State *L) {
   /* set global _PVERSION */
   lua_pushliteral(L, PLUTO_VERSION);
   lua_setfield(L, -2, "_PVERSION");
-  /* set global _PSOUP (always true as of 0.8.0) */
-  lua_pushboolean(L, true);
-  lua_setfield(L, -2, "_PSOUP");
   return 1;
 }
 

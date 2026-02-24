@@ -48,6 +48,7 @@ NAMESPACE_SOUP
 
 		[[nodiscard]] T* getPointer() const noexcept
 		{
+			// return reinterpret_cast<T*>(reinterpret_cast<uintptr_t>(ptr) * isValid());
 			SOUP_IF_LIKELY (isValid())
 			{
 				return ptr;
@@ -60,7 +61,7 @@ NAMESPACE_SOUP
 			return ptr != nullptr;
 		}
 
-		void reset() noexcept
+		void reset() SOUP_EXCAL
 		{
 			tt.reset();
 			ptr = nullptr;

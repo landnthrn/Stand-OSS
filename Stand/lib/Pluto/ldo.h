@@ -1,9 +1,12 @@
-#pragma once
 /*
 ** $Id: ldo.h $
 ** Stack and Call structure of Lua
 ** See Copyright Notice in lua.h
 */
+
+#ifndef ldo_h
+#define ldo_h
+
 
 #include "llimits.h"
 #include "lobject.h"
@@ -41,22 +44,11 @@
     p = restorestack(L, t__))  /* 'pos' part: restore 'p' */
 
 
-/* macro to check stack size and GC, preserving 'p' */
-#define checkstackGCp(L,n,p)  \
-  luaD_checkstackaux(L, n, \
-    ptrdiff_t t__ = savestack(L, p);  /* save 'p' */ \
-    luaC_checkGC(L),  /* stack grow uses memory */ \
-    p = restorestack(L, t__))  /* 'pos' part: restore 'p' */
-
-
-/* macro to check stack size and GC */
-#define checkstackGC(L,fsize)  \
-	luaD_checkstackaux(L, (fsize), luaC_checkGC(L), (void)0)
-
 
 /* type of protected functions, to be ran by 'runprotected' */
 typedef void (*Pfunc) (lua_State *L, void *ud);
 
+LUAI_FUNC l_noret luaD_errerr (lua_State *L);
 LUAI_FUNC void luaD_seterrorobj (lua_State *L, int errcode, StkId oldtop);
 LUAI_FUNC int luaD_protectedparser (lua_State *L, ZIO *z, const char *name,
                                                   const char *mode);
@@ -79,3 +71,5 @@ LUAI_FUNC void luaD_inctop (lua_State *L);
 
 LUAI_FUNC l_noret luaD_throw (lua_State *L, int errcode);
 LUAI_FUNC int luaD_rawrunprotected (lua_State *L, Pfunc f, void *ud);
+
+#endif

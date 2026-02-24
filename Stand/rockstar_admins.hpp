@@ -7,6 +7,8 @@
 namespace Stand
 {
 	inline const std::pair<int64_t, const char*> rockstar_admins[] = {
+		{262048884, "Whalekiller69_"},
+		{261296155, "VexingMeerkat"},
 		{260593288, "24tigersoph30091"},
 		{258746722, "kukuparot"},
 		{258578993, "__anya"},
@@ -252,6 +254,7 @@ namespace Stand
 		{211679972, "travellinganteat"},
 		{211532217, "MrOrange619"},
 		{211515349, "pudgybadger"},
+		{211399490, "whitewhalez3"},
 		{211136447, "Tuttingturtle"},
 		{210993185, "paranoiddodo0303"},
 		{210993156, "derangedepic"},
@@ -631,6 +634,7 @@ namespace Stand
 		{88223696, "LousyStinkyTofu"},
 		{88223119, "Abuyuyao"},
 		{88047835, "BlobbyFett22"},
+		{85821145, "scjacleu"},
 		{85593421, "Logic_rsg"},
 		{85074635, "GaMingmacHInEe"},
 		{84179362, "BaguetteMaker1"},
@@ -680,6 +684,7 @@ namespace Stand
 		{62409944, "TonyMSD1"},
 		{61522786, "TAMSIL_0001"},
 		{60331599, "asoofiaa"},
+		{58262602, "Gamer_Glasses"},
 		{57233573, "Klang_RSG"},
 		{56778561, "Huginn5"},
 		{56583239, "Rockin5"},
@@ -700,6 +705,7 @@ namespace Stand
 		{49216566, "Tavern-Keeper"},
 		{46469110, "Slazenger_16"},
 		{44969373, "NarcoticSniper"},
+		{43607878, "Spikerob"},
 		{41352312, "MonkeyViking"},
 		{39573295, "Rambozo2183"},
 		{29454165, "Shoalts"},

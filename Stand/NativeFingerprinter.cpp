@@ -23,7 +23,7 @@ namespace Stand
 	{
 		{
 			uint16_t v = ins.operation->getUniqueId();
-			w.u16(v);
+			w.u16_le(v);
 		}
 		for (uint8_t i = 0; i != ins.operation->getNumOperands(); ++i)
 		{
@@ -31,7 +31,7 @@ namespace Stand
 			if (opr.reg == soup::IMM)
 			{
 				uint64_t v = opr.val;
-				w.u64(v);
+				w.u64_le(v);
 			}
 			else if (opr.reg != soup::DIS)
 			{
@@ -45,7 +45,7 @@ namespace Stand
 				}
 				/*{
 					int32_t v = opr.deref_offset;
-					w.i32(v);
+					w.i32_le(v);
 				}*/
 			}
 		}
@@ -70,7 +70,7 @@ namespace Stand
 			}
 			if (!ins.isValid())
 			{
-				w.u16(status);
+				w.u16_le(status);
 				break;
 			}
 			if (strcmp(ins.operation->name, "jmp") == 0)
@@ -82,7 +82,7 @@ namespace Stand
 				normaliseIns(w, ins);
 				uint32_t val = getFuncHash(p + ins.operands[0].displacement);
 				//drawDebugText(fmt::format("Call at {} to function {}, hash {}", TO_IDA_ADDR(p), TO_IDA_ADDR(p + ins.operands[0].displacement), val));
-				w.u32(val);
+				w.u32_le(val);
 			}
 			else if (strcmp(ins.operation->name, "nop") != 0)
 			{
@@ -98,7 +98,7 @@ namespace Stand
 
 	uint32_t NativeFingerprinter::getFuncHash(const uint8_t* p)
 	{
-		soup::StringWriter sw(soup::ENDIAN_NATIVE);
+		soup::StringWriter sw;
 		normaliseFunc(sw, p);
 		return soup::joaat::hash(sw.data);
 	}
@@ -144,8 +144,8 @@ namespace Stand
 		{
 			uint64_t key = entry.first;
 			uint32_t value = entry.second;
-			w.u64(key);
-			w.u32(value);
+			w.u64_le(key);
+			w.u32_le(value);
 		}
 	}
 
@@ -155,8 +155,8 @@ namespace Stand
 		{
 			uint32_t key = entry.first;
 			uint64_t value = entry.second;
-			w.u32(key);
-			w.u64(value);
+			w.u32_le(key);
+			w.u64_le(value);
 		}
 	}
 

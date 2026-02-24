@@ -29,6 +29,7 @@ NAMESPACE_SOUP
 	{
 		static constexpr uint32_t REPLACEMENT_CHAR = 0xFFFD;
 
+		[[nodiscard]] static char32_t utf8_to_utf32_char(const char*& it, const char* end) noexcept;
 		[[nodiscard]] static char32_t utf8_to_utf32_char(std::string::const_iterator& it, const std::string::const_iterator end) noexcept;
 #if SOUP_CPP20
 		[[nodiscard]] static std::u32string utf8_to_utf32(const char8_t* utf8) noexcept;
@@ -49,14 +50,14 @@ NAMESPACE_SOUP
 		template <typename Str = std::u16string>
 		[[nodiscard]] static char32_t utf16_to_utf32(typename Str::const_iterator& it, const typename Str::const_iterator end) noexcept
 		{
-			char32_t w1 = *it++;
+			char32_t w1 = static_cast<char32_t>(*it++);
 			if (UTF16_IS_HIGH_SURROGATE(w1))
 			{
 				SOUP_IF_UNLIKELY (it == end)
 				{
 					return 0;
 				}
-				char32_t w2 = *it++;
+				char32_t w2 = static_cast<char32_t>(*it++);
 				return utf16_to_utf32(w1, w2);
 			}
 			return w1;
@@ -135,5 +136,9 @@ NAMESPACE_SOUP
 				--it;
 			}
 		}
+
+		static void utf8_sanitise(std::string& str);
+		static bool utf8_validate(const char* it, const char* const end);
+		static bool utf8_validate(const std::string& str) { return utf8_validate(str.data(), str.data() + str.size()); }
 	};
 }

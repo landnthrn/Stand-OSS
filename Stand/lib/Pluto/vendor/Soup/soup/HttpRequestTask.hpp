@@ -7,8 +7,8 @@
 #include "HttpResponse.hpp"
 #include "Uri.hpp"
 #if !SOUP_WASM
-#include "DelayedCtor.hpp"
 #include "netConnectTask.hpp"
+#include "Optional.hpp"
 #include "SharedPtr.hpp"
 #endif
 
@@ -35,16 +35,24 @@ NAMESPACE_SOUP
 #endif
 		HttpRequest hr;
 #if !SOUP_WASM
-		DelayedCtor<netConnectTask> connector;
+		SharedPtr<dnsResolver> resolver;
+		certchain_validator_t certchain_validator;
+		Optional<netConnectTask> connector;
 		SharedPtr<Socket> sock;
 		time_t awaiting_response_since;
 #else
+		std::unordered_map<std::string, std::string> header_fields;
 		std::vector<const char*> headers;
 #endif
 
-		HttpRequestTask(HttpRequest&& hr);
 		HttpRequestTask(const Uri& uri);
 		HttpRequestTask(std::string host, std::string path);
+		HttpRequestTask(HttpRequest&& hr);
+#if !SOUP_WASM
+		HttpRequestTask(HttpRequest&& hr, SharedPtr<dnsResolver> resolver);
+		HttpRequestTask(HttpRequest&& hr, certchain_validator_t certchain_validator);
+		HttpRequestTask(HttpRequest&& hr, SharedPtr<dnsResolver> resolver, certchain_validator_t certchain_validator);
+#endif
 
 #if !SOUP_WASM
 		void onTick() final;

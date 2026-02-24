@@ -1,9 +1,13 @@
-#pragma once
 /*
 ** $Id: lauxlib.h $
 ** Auxiliary functions for building Lua libraries
 ** See Copyright Notice in lua.h
 */
+
+
+#ifndef lauxlib_h
+#define lauxlib_h
+
 
 #include <stddef.h>
 #include <stdio.h>
@@ -42,13 +46,20 @@ typedef struct luaL_Reg {
 
 
 namespace Pluto {
-  struct PreloadedLibrary {
+  struct ConstexprLibrary {
     const char* name;
     const luaL_Reg* funcs;
+
+    ConstexprLibrary(const char* name, const luaL_Reg* funcs)
+      : name(name), funcs(funcs)
+    {}
+  };
+
+  struct PreloadedLibrary : public ConstexprLibrary {
     const lua_CFunction init;
 
     PreloadedLibrary(const char* name, const luaL_Reg* funcs, lua_CFunction init)
-      : name(name), funcs(funcs), init(init)
+      : ConstexprLibrary(name, funcs), init(init)
     {}
   };
 }
@@ -128,6 +139,8 @@ LUALIB_API int (luaL_loadstring) (lua_State *L, const char *s);
 
 LUALIB_API lua_State *(luaL_newstate) (void);
 
+LUALIB_API unsigned luaL_makeseed (lua_State *L);
+
 LUALIB_API lua_Integer (luaL_len) (lua_State *L, int idx);
 
 LUALIB_API void (luaL_addgsub) (luaL_Buffer *b, const char *s,
@@ -144,6 +157,17 @@ LUALIB_API void (luaL_traceback) (lua_State *L, lua_State *L1,
 
 LUALIB_API void (luaL_requiref) (lua_State *L, const char *modname,
                                  lua_CFunction openf, int glb);
+
+inline void* pluto_setupgcmt(lua_State* L, void* ret, const char* tname, lua_CFunction gcfunc) {
+  if (luaL_newmetatable(L, tname)) {
+    lua_pushliteral(L, "__gc");
+    lua_pushcfunction(L, gcfunc);
+    lua_settable(L, -3);
+  }
+  lua_setmetatable(L, -2);
+  return ret;
+}
+#define pluto_newclassinst(L, T, ...) (T*)pluto_setupgcmt(L, new (lua_newuserdata(L, sizeof(T))) T(__VA_ARGS__), #T, [](lua_State *L2) { std::destroy_at<>((T*)luaL_checkudata(L2, 1, #T)); return 0; })
 
 /*
 ** ===============================================================
@@ -320,3 +344,9 @@ typedef struct luaL_Stream {
 
 #endif
 /* }============================================================ */
+
+
+
+#endif
+
+

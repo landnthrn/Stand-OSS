@@ -24,9 +24,12 @@
 
 #include "lauxlib.h"
 #include "lualib.h"
+#include "lstring.h"
 
 
+#include "vendor/Soup/soup/bitutil.hpp"
 #include "vendor/Soup/soup/string.hpp"
+#include "vendor/Soup/soup/unicode.hpp"
 #include "vendor/Soup/soup/urlenc.hpp"
 
 
@@ -72,7 +75,7 @@ static int str_len (lua_State *L) {
 ** The inverted comparison avoids a possible overflow
 ** computing '-pos'.
 */
-static size_t posrelatI (lua_Integer pos, size_t len) {
+size_t posrelatI (lua_Integer pos, size_t len) {
   if (pos > 0)
     return (size_t)pos;
   else if (pos == 0)
@@ -108,6 +111,22 @@ static int str_sub (lua_State *L) {
   size_t end = getendpos(L, 3, -1, l);
   if (start <= end)
     lua_pushlstring(L, s + start - 1, (end - start) + 1);
+  else lua_pushliteral(L, "");
+  return 1;
+}
+
+
+static int str_span (lua_State *L) {
+  size_t l;
+  const char *s = luaL_checklstring(L, 1, &l);
+  size_t off = posrelatI(luaL_checkinteger(L, 2), l) - 1;
+  size_t len = luaL_optinteger(L, 3, l - off);
+  if (off < l) {
+    if (l_unlikely(len > (l - off))) {
+      len = (l - off);
+    }
+    lua_pushlstring(L, s + off, len);
+  }
   else lua_pushliteral(L, "");
   return 1;
 }
@@ -684,7 +703,7 @@ static const char *match (MatchState *ms, const char *s, const char *p) {
             }
             case '+':  /* 1 or more repetitions */
               s++;  /* 1 match already done */
-              /* FALLTHROUGH */
+              [[fallthrough]];
             case '*':  /* 0 or more repetitions */
               s = max_expand(ms, s, p, ep);
               break;
@@ -1159,8 +1178,9 @@ static int lua_number2strx (lua_State *L, char *buff, int sz,
 #define MAX_FORMAT	32
 
 
-void addquoted (luaL_Buffer *b, const char *s, size_t len) {
+void addquoted (luaL_Buffer *b, const char *s, size_t len, bool must_be_valid_utf8) {
   const bool prefer_single_line = (*s == '\x1b');
+  uint8_t continuations = 0;
   luaL_addchar(b, '"');
   while (len--) {
     if (*s == '"' || *s == '\\') {
@@ -1177,12 +1197,53 @@ void addquoted (luaL_Buffer *b, const char *s, size_t len) {
       }
     }
     else if (iscntrl(uchar(*s))) {
+    _escape_char:
       char buff[10];
       if (!isdigit(uchar(*(s+1))))
         l_sprintf(buff, sizeof(buff), "\\%d", (int)uchar(*s));
       else
         l_sprintf(buff, sizeof(buff), "\\%03d", (int)uchar(*s));
       luaL_addstring(b, buff);
+    }
+    else if ((*s & 0x80) && must_be_valid_utf8) {
+      if (UTF8_IS_CONTINUATION(*s)) {
+        if (l_unlikely(!continuations)) {
+          goto _escape_char;
+        }
+        --continuations;
+      }
+      else {
+        if (l_unlikely(uchar(*s) < 0xC2)) {
+          goto _escape_char;
+        }
+        continuations = soup::bitutil::getNumLeadingZeros(static_cast<uint32_t>((uint8_t)~uchar(*s))) - 25;
+        if (l_unlikely(continuations == 0)) {
+          goto _escape_char;
+        }
+        auto todo = continuations;
+        uint32_t uni = uchar(*s) & ((1 << (6 - todo)) - 1);
+        auto lookahead_s = s;
+        auto lookahead_len = len;
+        while (todo--) {
+          if (l_unlikely(!lookahead_len--)) {
+            continuations = 0;
+            goto _escape_char;
+          }
+          ++lookahead_s;
+          if (l_unlikely(!UTF8_IS_CONTINUATION(uchar(*lookahead_s)))) {
+            continuations = 0;
+            goto _escape_char;
+          }
+          uni <<= 6;
+          uni |= (uchar(*lookahead_s) & 0b111111);
+        }
+        if (l_unlikely((uni >= 0xD800 && uni <= 0xDFFF) || uni > 0x10FFFF)) {
+          s += continuations - 2;
+          continuations = 0;
+          goto _escape_char;
+        }
+      }
+      luaL_addchar(b, *s);
     }
     else
       luaL_addchar(b, *s);
@@ -1227,7 +1288,7 @@ static void addliteral (lua_State *L, luaL_Buffer *b, int arg) {
     case LUA_TSTRING: {
       size_t len;
       const char *s = lua_tolstring(L, arg, &len);
-      addquoted(b, s, len);
+      addquoted(b, s, len, false);
       break;
     }
     case LUA_TNUMBER: {
@@ -1378,7 +1439,7 @@ static int str_format (lua_State *L) {
         case 'f':
           maxitem = MAX_ITEMF;  /* extra space for '%f' */
           buff = luaL_prepbuffsize(&b, maxitem);
-          /* FALLTHROUGH */
+          [[fallthrough]];
         case 'e': case 'E': case 'g': case 'G': {
           lua_Number n = luaL_checknumber(L, arg);
           checkformat(L, form, L_FMTFLAGSF, 1);
@@ -1747,7 +1808,7 @@ static int str_pack (lua_State *L) {
         totalsize += len + 1;
         break;
       }
-      case Kpadding: luaL_addchar(&b, LUAL_PACKPADBYTE);  /* FALLTHROUGH */
+      case Kpadding: luaL_addchar(&b, LUAL_PACKPADBYTE); [[fallthrough]];
       case Kpaddalign: case Knop:
         arg--;  /* undo increment */
         break;
@@ -1932,33 +1993,39 @@ static int str_partition (lua_State *L) {
 
 static int str_split (lua_State *L) {
   /*
+    This str_split function is based on the one found in LuaU, licensed under their terms.
     https://github.com/Roblox/luau/blob/master/VM/src/lstrlib.cpp
-    This str_split function is licensed to LuaU under their terms.
   */
   size_t haystackLen;
   const char* haystack = luaL_checklstring(L, 1, &haystackLen);
   size_t needleLen;
-  const char* needle = luaL_optlstring(L, 2, ",", &needleLen);
+  const char* needle = luaL_checklstring(L, 2, &needleLen);
+  lua_Integer limit = luaL_optinteger(L, 3, LUA_MAXINTEGER) - 1;
 
   const char* begin = haystack;
   const char* end = haystack + haystackLen;
   const char* spanStart = begin;
-  int numMatches = 0;
+  lua_Integer numMatches = 0;
 
   lua_createtable(L, 0, 0);
 
   if (needleLen == 0)
     begin++;
 
-  for (const char* iter = begin; iter <= end - needleLen; iter++) {
-    if (memcmp(iter, needle, needleLen) == 0) {
-      lua_pushinteger(L, ++numMatches);
-      lua_pushlstring(L, spanStart, iter - spanStart);
-      lua_settable(L, -3);
-
-      spanStart = iter + needleLen;
-      if (needleLen > 0)
-        iter += needleLen - 1;
+  if (l_likely(limit > 0)) {
+    for (const char* iter = begin; iter <= end - needleLen; iter++) {
+      if (memcmp(iter, needle, needleLen) == 0) {
+        lua_pushinteger(L, ++numMatches);
+        lua_pushlstring(L, spanStart, iter - spanStart);
+        lua_settable(L, -3);
+    
+        spanStart = iter + needleLen;
+        if (needleLen > 0)
+          iter += needleLen - 1;
+    
+        if (numMatches == limit)
+          break;
+      }
     }
   }
 
@@ -2140,121 +2207,6 @@ static int str_rfind (lua_State *L) {
 }
 
 
-static int str_lfind (lua_State *L) {
-  size_t pos;
-  std::string_view s = luaL_checkstring(L, 1);
-  std::string_view sub = luaL_checkstring(L, 2);
-
-  pluto_warning(L, "string.lfind(s, sub) is deprecated, replace the call with string.find(s, sub, 1, true).");
-
-  pos = s.find(sub);
-  if (pos != std::string::npos) {
-    lua_pushinteger(L, pos + 1);
-  }
-  else {
-    lua_pushnil(L);
-  }
-
-  return 1;
-}
-
-
-static int str_find_first_of (lua_State *L) {
-  size_t pos;
-  std::string_view s = luaL_checkstring(L, 1);
-  std::string_view d = luaL_checkstring(L, 2);
-
-  {
-    std::string msg = "string.find_first_of is deprecated; replace it with string.find using pattern [";
-    msg.append(d);
-    msg.push_back(']');
-    pluto_warning(L, msg.c_str());
-  }
-
-  pos = s.find_first_of(d);
-  if (pos != std::string::npos) {
-    lua_pushinteger(L, ++pos);
-  }
-  else {
-    lua_pushnil(L);
-  }
-
-  return 1;
-}
-
-
-static int str_find_first_not_of (lua_State *L) {
-  size_t pos;
-  std::string_view s = luaL_checkstring(L, 1);
-  std::string_view d = luaL_checkstring(L, 2);
-
-  {
-    std::string msg = "string.find_first_not_of is deprecated; replace it with string.find using pattern [^";
-    msg.append(d);
-    msg.push_back(']');
-    pluto_warning(L, msg.c_str());
-  }
-
-  pos = s.find_first_not_of(d);
-  if (pos != std::string::npos) {
-    lua_pushinteger(L, ++pos);
-  }
-  else {
-    lua_pushnil(L);
-  }
-
-  return 1;
-}
-
-
-static int str_find_last_of (lua_State *L) {
-  size_t pos;
-  std::string_view s = luaL_checkstring(L, 1);
-  std::string_view d = luaL_checkstring(L, 2);
-
-  {
-    std::string msg = "string.find_last_of is deprecated; replace it with string.rfind using pattern [";
-    msg.append(d);
-    msg.push_back(']');
-    pluto_warning(L, msg.c_str());
-  }
-
-  pos = s.find_last_of(d);
-  if (pos != std::string::npos) {
-    lua_pushinteger(L, ++pos);
-  }
-  else {
-    lua_pushnil(L);
-  }
-
-  return 1;
-}
-
-
-static int str_find_last_not_of (lua_State *L) {
-  size_t pos;
-  std::string_view s = luaL_checkstring(L, 1);
-  std::string_view d = luaL_checkstring(L, 2);
-
-  {
-    std::string msg = "string.find_last_not_of is deprecated; replace it with string.rfind using pattern [^";
-    msg.append(d);
-    msg.push_back(']');
-    pluto_warning(L, msg.c_str());
-  }
-
-  pos = s.find_last_not_of(d);
-  if (pos != std::string::npos) {
-    lua_pushinteger(L, ++pos);
-  }
-  else {
-    lua_pushnil(L);
-  }
-
-  return 1;
-}
-
-
 static int str_truncate (lua_State *L) {
   std::string s = pluto_checkstring(L, 1);
   const size_t dlen = static_cast<size_t>(luaL_checkinteger(L, 2));
@@ -2329,7 +2281,7 @@ static int str_replace (lua_State *L) {
 
 
 static int str_formatint (lua_State *L) {
-  luaL_check(L, !lua_isinteger(L, 1) && !lua_isstring(L, 1), "argument 'integer' for string.format_int must be an integer or a string which represents an integer");
+  luaL_check(L, !lua_isinteger(L, 1) && !lua_isstring(L, 1), "argument 'integer' for string.formatint must be an integer or a string which represents an integer");
 
   std::string num = lua_tostring(L, 1);
 
@@ -2345,7 +2297,7 @@ static int str_formatint (lua_State *L) {
         pos++;
       }
       else {
-        luaL_error(L, "argument 'integer' for string.format_int was a string, but does not represent a valid integer (bad character: '%c')", c);
+        luaL_error(L, "argument 'integer' for string.formatint was a string, but does not represent a valid integer (bad character: '%c')", c);
       }
     }
   }
@@ -2369,24 +2321,50 @@ static int str_formatint (lua_State *L) {
   return 1;
 }
 
+
+static int str_tohex (lua_State* L) {
+  size_t size;
+  const char *data = luaL_checklstring(L, 1, &size);
+  const bool spaces = lua_toboolean(L, 2);
+  const bool upper = lua_toboolean(L, 3);
+
+  const auto map = upper ? soup::string::charset_hex : soup::string::charset_hex_lower;
+
+  char shrtbuf[LUAI_MAXSHORTLEN];
+  if (spaces) {
+    size_t out_size = soup::string::bin2hexWithSpacesSize(size);
+    char *out = plutoS_prealloc(L, shrtbuf, out_size);
+    soup::string::bin2hexWithSpaces(out, data, size, map);
+    plutoS_commit(L, out, out_size);
+  }
+  else {
+    char *out = plutoS_prealloc(L, shrtbuf, size * 2);
+    soup::string::bin2hexAt(out, data, size, map);
+    plutoS_commit(L, out, size * 2);
+  }
+  return 1;
+}
+
+
+static int str_fromhex (lua_State* L) {
+  size_t size;
+  const char *data = luaL_checklstring(L, 1, &size);
+
+  auto res = soup::string::hex2bin(data, size);
+
+  pluto_pushstring(L, res);
+  return 1;
+}
+
 /* }====================================================== */
 
 
 static const luaL_Reg strlib[] = {
+  {"tohex", str_tohex},
+  {"fromhex", str_fromhex},
   {"formatint", str_formatint},
   {"replace", str_replace},
   {"truncate", str_truncate},
-
-  /* Below is deprecated as of 0.8.0 */
-
-  {"find_last_not_of", str_find_last_not_of},
-  {"find_last_of", str_find_last_of},
-  {"find_first_not_of", str_find_first_not_of},
-  {"find_first_of", str_find_first_of},
-  {"lfind", str_lfind},
-
-  /* Above is deprecated as of 0.8.0 */
-
   {"rfind", str_rfind},
   {"strip", str_strip},
   {"rstrip", str_rstrip},
@@ -2417,6 +2395,7 @@ static const luaL_Reg strlib[] = {
   {"rep", str_rep},
   {"reverse", str_reverse},
   {"sub", str_sub},
+  {"span", str_span},
   {"upper", str_upper},
   {"pack", str_pack},
   {"packsize", str_packsize},

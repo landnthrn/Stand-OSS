@@ -7,7 +7,7 @@
 #include "log.hpp"
 #include "os.hpp"
 #include "Promise.hpp"
-#include "ReuseTag.hpp"
+#include "netReuseTag.hpp"
 #include "Socket.hpp"
 #include "Task.hpp"
 #include "time.hpp"
@@ -21,8 +21,9 @@
 
 NAMESPACE_SOUP
 {
-	void Scheduler::addWorker(SharedPtr<Worker>&& w) SOUP_EXCAL
+	void Scheduler::addWorker(SharedPtr<Worker>&& w)
 	{
+		SOUP_ASSERT(w); // SharedPtr must hold a pointer
 		pending_workers.emplace_front(std::move(w));
 	}
 
@@ -51,7 +52,7 @@ NAMESPACE_SOUP
 		std::vector<pollfd> pollfds{};
 		while (shouldKeepRunning())
 		{
-			uint8_t workload_flags = 0;
+			uint8_t workload_flags = default_workload_flags;
 #if LOG_TICK_DUR
 			Stopwatch t;
 #endif
@@ -81,7 +82,7 @@ NAMESPACE_SOUP
 		std::vector<pollfd> pollfds{};
 		while (shouldKeepRunning())
 		{
-			uint8_t workload_flags = 0;
+			uint8_t workload_flags = default_workload_flags;
 			tick(pollfds, workload_flags);
 			yieldBusyspin(pollfds, workload_flags);
 			if (time::millis() > deadline)
@@ -104,7 +105,7 @@ NAMESPACE_SOUP
 		this_thread_running_scheduler = this;
 
 		std::vector<pollfd> pollfds{};
-		uint8_t workload_flags = 0;
+		uint8_t workload_flags; // dummy for the out-param
 		tick(pollfds, workload_flags);
 #if !SOUP_WASM
 		if (poll(pollfds, 0) > 0)
@@ -181,7 +182,7 @@ NAMESPACE_SOUP
 			});
 #endif
 
-			int dispo = Worker::NEUTRAL;
+			int dispo = Task::NEUTRAL;
 
 			if (w.holdup_type == Worker::IDLE)
 			{
@@ -207,9 +208,9 @@ NAMESPACE_SOUP
 			}
 
 			workload_flags |= dispo;
-			static_assert((int)Worker::HIGH_FRQUENCY == ((int)HAS_HIGH_FREQUENCY_TASKS | (int)NOT_JUST_SOCKETS));
-			static_assert((int)Worker::NEUTRAL == (int)NOT_JUST_SOCKETS);
-			static_assert((int)Worker::LOW_FREQUENCY == (int)0);
+			static_assert((int)Task::HIGH_FREQUENCY == ((int)HAS_HIGH_FREQUENCY_TASKS | (int)NOT_JUST_SOCKETS));
+			static_assert((int)Task::NEUTRAL == (int)NOT_JUST_SOCKETS);
+			static_assert((int)Task::LOW_FREQUENCY == (int)0);
 		}
 	}
 
@@ -371,10 +372,10 @@ NAMESPACE_SOUP
 		for (const auto& w : workers)
 		{
 			if (w->type == WORKER_TYPE_SOCKET
-				&& static_cast<Socket*>(w.get())->custom_data.isStructInMap(ReuseTag)
-				&& static_cast<Socket*>(w.get())->custom_data.getStructFromMapConst(ReuseTag).host == host
-				&& static_cast<Socket*>(w.get())->custom_data.getStructFromMapConst(ReuseTag).port == port
-				&& static_cast<Socket*>(w.get())->custom_data.getStructFromMapConst(ReuseTag).tls == tls
+				&& static_cast<Socket*>(w.get())->custom_data.isStructInMap(netReuseTag)
+				&& static_cast<Socket*>(w.get())->custom_data.getStructFromMapConst(netReuseTag).host == host
+				&& static_cast<Socket*>(w.get())->custom_data.getStructFromMapConst(netReuseTag).port == port
+				&& static_cast<Socket*>(w.get())->custom_data.getStructFromMapConst(netReuseTag).tls == tls
 				)
 			{
 				return w;
@@ -386,10 +387,10 @@ NAMESPACE_SOUP
 		{
 			const SharedPtr<Socket>& w = node->data;
 			if (w->type == WORKER_TYPE_SOCKET
-				&& static_cast<Socket*>(w.get())->custom_data.isStructInMap(ReuseTag)
-				&& static_cast<Socket*>(w.get())->custom_data.getStructFromMapConst(ReuseTag).host == host
-				&& static_cast<Socket*>(w.get())->custom_data.getStructFromMapConst(ReuseTag).port == port
-				&& static_cast<Socket*>(w.get())->custom_data.getStructFromMapConst(ReuseTag).tls == tls
+				&& static_cast<Socket*>(w.get())->custom_data.isStructInMap(netReuseTag)
+				&& static_cast<Socket*>(w.get())->custom_data.getStructFromMapConst(netReuseTag).host == host
+				&& static_cast<Socket*>(w.get())->custom_data.getStructFromMapConst(netReuseTag).port == port
+				&& static_cast<Socket*>(w.get())->custom_data.getStructFromMapConst(netReuseTag).tls == tls
 				)
 			{
 				return w;
@@ -404,8 +405,8 @@ NAMESPACE_SOUP
 		for (const auto& w : workers)
 		{
 			if (w->type == WORKER_TYPE_SOCKET
-				&& static_cast<Socket*>(w.get())->custom_data.isStructInMap(ReuseTag)
-				&& !static_cast<Socket*>(w.get())->custom_data.getStructFromMapConst(ReuseTag).is_busy
+				&& static_cast<Socket*>(w.get())->custom_data.isStructInMap(netReuseTag)
+				&& !static_cast<Socket*>(w.get())->custom_data.getStructFromMapConst(netReuseTag).is_busy
 				)
 			{
 				static_cast<Socket*>(w.get())->close();

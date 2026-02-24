@@ -10,9 +10,9 @@ NAMESPACE_SOUP
 #if SOUP_CPP20
 	std::strong_ordering JsonNode::operator<=>(const JsonNode& b) const
 	{
-		if (type != b.type)
+		if (getType() != b.getType())
 		{
-			return type <=> b.type;
+			return getType() <=> b.getType();
 		}
 		return encode() <=> b.encode();
 	}
@@ -20,7 +20,7 @@ NAMESPACE_SOUP
 
 	bool JsonNode::operator==(const JsonNode& b) const
 	{
-		return type == b.type
+		return getType() == b.getType()
 			&& encode() == b.encode()
 			;
 	}
@@ -32,7 +32,7 @@ NAMESPACE_SOUP
 
 	bool JsonNode::operator<(const JsonNode& b) const
 	{
-		return type < b.type
+		return getType() < b.getType()
 			|| encode() < b.encode()
 			;
 	}
@@ -61,5 +61,18 @@ NAMESPACE_SOUP
 	void JsonNode::throwTypeError()
 	{
 		SOUP_THROW(Exception("JsonNode has unexpected type"));
+	}
+
+	double JsonNode::toFloat() const
+	{
+		if (isFloat())
+		{
+			return static_cast<double>(asFloat());
+		}
+		if (isInt())
+		{
+			return static_cast<double>(asInt());
+		}
+		throwTypeError();
 	}
 }

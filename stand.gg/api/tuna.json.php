@@ -19,7 +19,7 @@ function joaat(string $str): int
 
 echo json_encode([
 	"v" => ((filemtime(__DIR__."/bgscript.txt") << 32) ^ filemtime(__DIR__."/blobfish.txt") ^ filemtime(__DIR__."/tuna.json.php")),
-	"lnv" => "3274a",
+	"lnv" => "3407a",
 	"cmw" => [
 		"75e06c5aa41b329a3d10ea211b97b16268cfdc6e", // luaffi 0.1.1
 		"c63b9364fdaf1306eba65293b628797a5c9c7562", // aalib (https://raw.githubusercontent.com/hexarobi/stand-lua-script-repository/main/lib/aalib.dll), needed by some old scripts to play sounds
@@ -31,7 +31,7 @@ echo json_encode([
 	"a" => [
 		[joaat("ffi.gta5.special"), [
 			"4C 89 4C 24 ? 4C 89 44 24 ? 48 89 54 24 ? 48 89 4C 24 ? 48 83 EC ? 48 C7 44 24 ? ? ? ? ? 48 C7 44 24 ? ? ? ? ? 33 C9 FF 15 ? ? ? ? 48 83 7C 24", // nvCreateProcessA
-			"48 89 5C 24 ? 48 89 74 24 ? 48 89 6C 24 ? 48 8D 64 24 ? 48 89 7C 24 ? 48 8D 64 24", // IMachineHashStrategy::ExecCmd
+			//"48 89 5C 24 ? 48 89 74 24 ? 48 89 6C 24 ? 48 8D 64 24 ? 48 89 7C 24 ? 48 8D 64 24", // IMachineHashStrategy::ExecCmd
 		]],
 	],
 ]);

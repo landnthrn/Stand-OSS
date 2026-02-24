@@ -1,9 +1,11 @@
-#pragma once
 /*
 ** $Id: lcode.h $
 ** Code generator for Lua
 ** See Copyright Notice in lua.h
 */
+
+#ifndef lcode_h
+#define lcode_h
 
 #include "llex.h"
 #include "lobject.h"
@@ -36,6 +38,8 @@ typedef enum BinOpr {
   OPR_SPACESHIP, OPR_INSTANCEOF,
   /* logical operators */
   OPR_AND, OPR_OR, OPR_COAL,
+  /* pluto additions */
+  OPR_IPOW,
   OPR_NOBINOPR,
 } BinOpr;
 
@@ -58,7 +62,7 @@ typedef enum UnOpr { OPR_MINUS, OPR_BNOT, OPR_NOT, OPR_LEN, OPR_NOUNOPR } UnOpr;
 #define luaK_jumpto(fs,t)	luaK_patchlist(fs, luaK_jump(fs), t)
 
 LUAI_FUNC int luaK_code (FuncState *fs, Instruction i);
-LUAI_FUNC int luaK_codeABx (FuncState *fs, OpCode o, int A, unsigned int Bx);
+LUAI_FUNC int luaK_codeABx (FuncState *fs, OpCode o, int A, unsigned Bx);
 LUAI_FUNC int luaK_codeABCk (FuncState *fs, OpCode o, int A,
                                             int B, int C, int k);
 LUAI_FUNC int luaK_exp2const (FuncState *fs, const expdesc *e, TValue *v);
@@ -101,3 +105,6 @@ LUAI_FUNC l_noret luaK_semerror (LexState *ls, const char *msg);
 LUAI_FUNC void luaK_exp2reg (FuncState *fs, expdesc *e, int reg);
 LUAI_FUNC void luaK_freeexp (FuncState *fs, expdesc *e);
 LUAI_FUNC void luaK_invertcond (FuncState *fs, int list);
+
+
+#endif

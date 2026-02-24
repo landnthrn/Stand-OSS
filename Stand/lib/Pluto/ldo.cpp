@@ -94,10 +94,6 @@ void luaD_seterrorobj (lua_State *L, int errcode, StkId oldtop) {
       setsvalue2s(L, oldtop, G(L)->memerrmsg); /* reuse preregistered msg. */
       break;
     }
-    case LUA_ERRERR: {
-      setsvalue2s(L, oldtop, luaS_newliteral(L, "error in error handling"));
-      break;
-    }
     case LUA_OK: {  /* special case only for closing upvalues */
       setnilvalue(s2v(oldtop));  /* no error message */
       break;
@@ -120,6 +116,7 @@ l_noret luaD_throw (lua_State *L, int errcode) {
   else {  /* thread has no error handler */
     global_State *g = G(L);
     errcode = luaE_resetthread(L, errcode);  /* close all upvalues */
+    L->status = errcode;
     if (g->mainthread->errorJmp) {  /* main thread has a handler? */
       setobjs2s(L, g->mainthread->top.p++, L->top.p - 1);  /* copy error obj. */
       luaD_throw(g->mainthread, errcode);  /* re-throw in main thread */
@@ -198,6 +195,16 @@ static void correctstack (lua_State *L) {
 /* some space for error handling */
 #define ERRORSTACKSIZE	(LUAI_MAXSTACK + 200)
 
+
+/* raise an error while running the message handler */
+l_noret luaD_errerr (lua_State *L) {
+  TString *msg = luaS_newliteral(L, "error in error handling");
+  setsvalue2s(L, L->top.p, msg);
+  L->top.p++;  /* assume EXTRA_STACK */
+  luaD_throw(L, LUA_ERRERR);
+}
+
+
 /*
 ** Reallocate the stack to a new size, correcting all pointers into it.
 ** In ISO C, any pointer use after the pointer has been deallocated is
@@ -247,7 +254,7 @@ int luaD_growstack (lua_State *L, int n, int raiseerror) {
        a stack error; cannot grow further than that. */
     lua_assert(stacksize(L) == ERRORSTACKSIZE);
     if (raiseerror)
-      luaD_throw(L, LUA_ERRERR);  /* error inside message handler */
+      luaD_errerr(L);  /* error inside message handler */
     return 0;  /* if not 'raiseerror', just signal it */
   }
   else if (n < LUAI_MAXSTACK) {  /* avoids arithmetic overflows */
@@ -391,7 +398,7 @@ static void rethook (lua_State *L, CallInfo *ci, int nres) {
     int ftransfer;
     if (isLua(ci)) {
       Proto *p = ci_func(ci)->p;
-      if (p->is_vararg)
+      if (p->flag & PF_ISVARARG)
         delta = ci->u.l.nextraargs + p->numparams + 1;
     }
     ci->func.p += delta;  /* if vararg, back to virtual 'func' */
@@ -412,9 +419,9 @@ static void rethook (lua_State *L, CallInfo *ci, int nres) {
 static StkId tryfuncTM (lua_State *L, StkId func) {
   const TValue *tm;
   StkId p;
-  checkstackGCp(L, 1, func);  /* space for metamethod */
-  tm = luaT_gettmbyobj(L, s2v(func), TM_CALL);  /* (after previous GC) */
-  if (l_unlikely(ttisnil(tm)))
+  checkstackp(L, 1, func);  /* space for metamethod */
+  tm = luaT_getfasttmbyobj(L, s2v(func), TM_CALL);  /* (after previous GC) */
+  if (l_unlikely(!tm))
     luaG_callerror(L, s2v(func));  /* nothing to call */
   for (p = L->top.p; p > func; p--)  /* open space for metamethod */
     setobjs2s(L, p, p-1);
@@ -517,7 +524,7 @@ l_sinline int precallC (lua_State *L, StkId func, int nresults,
                                             lua_CFunction f) {
   int n;  /* number of returns */
   CallInfo *ci;
-  checkstackGCp(L, LUA_MINSTACK, func);  /* ensure minimum stack size */
+  checkstackp(L, LUA_MINSTACK, func);  /* ensure minimum stack size */
   L->ci = ci = prepCallInfo(L, func, nresults, CIST_C,
                                L->top.p + LUA_MINSTACK);
   lua_assert(ci->top.p <= L->stack_last.p);
@@ -553,7 +560,7 @@ int luaD_pretailcall (lua_State *L, CallInfo *ci, StkId func,
       int fsize = p->maxstacksize;  /* frame size */
       int nfixparams = p->numparams;
       int i;
-      checkstackGCp(L, fsize - delta, func);
+      checkstackp(L, fsize - delta, func);
       ci->func.p -= delta;  /* restore 'func' (if vararg) */
       for (i = 0; i < narg1; i++)  /* move down function and arguments */
         setobjs2s(L, ci->func.p + i, func + i);
@@ -600,7 +607,7 @@ CallInfo *luaD_precall (lua_State *L, StkId func, int nresults) {
       int narg = cast_int(L->top.p - func) - 1;  /* number of real arguments */
       int nfixparams = p->numparams;
       int fsize = p->maxstacksize;  /* frame size */
-      checkstackGCp(L, fsize, func);
+      checkstackp(L, fsize, func);
       L->ci = ci = prepCallInfo(L, func, nresults, 0, func + 1 + fsize);
       ci->u.l.savedpc = p->code;  /* starting point */
       for (; narg < nfixparams; narg++)
@@ -767,6 +774,7 @@ static CallInfo *findpcall (lua_State *L) {
 ** coroutine error handler and should not kill the coroutine.)
 */
 static int resume_error (lua_State *L, const char *msg, int narg) {
+  api_checkpop(L, narg);
   L->top.p -= narg;  /* remove args from the stack */
   setsvalue2s(L, L->top.p, luaS_new(L, msg));  /* push error message */
   api_incr_top(L);
@@ -850,7 +858,7 @@ LUA_API int lua_resume (lua_State *L, lua_State *from, int nargs,
     return resume_error(L, "C stack overflow", nargs);
   L->nCcalls++;
   luai_userstateresume(L, nargs);
-  api_checknelems(L, (L->status == LUA_OK) ? nargs + 1 : nargs);
+  api_checkpop(L, (L->status == LUA_OK) ? nargs + 1 : nargs);
   status = luaD_rawrunprotected(L, resume, &nargs);
    /* continue running after recoverable errors */
   status = precover(L, status);
@@ -879,7 +887,7 @@ LUA_API int lua_yieldk (lua_State *L, int nresults, lua_KContext ctx,
   luai_userstateyield(L, nresults);
   lua_lock(L);
   ci = L->ci;
-  api_checknelems(L, nresults);
+  api_checkpop(L, nresults);
   if (l_unlikely(!yieldable(L))) {
     if (L != G(L)->mainthread)
       luaG_runerror(L, "attempt to yield across a C-call boundary");
@@ -983,7 +991,7 @@ struct SParser {  /* data to 'f_parser' */
 
 
 static void checkmode (lua_State *L, const char *mode, const char *x) {
-  if (mode && strchr(mode, x[0]) == NULL) {
+  if (strchr(mode, x[0]) == NULL) {
     luaO_pushfstring(L,
        "attempt to load a %s chunk (mode is '%s')", x, mode);
     luaD_throw(L, LUA_ERRSYNTAX);
@@ -994,16 +1002,21 @@ static void checkmode (lua_State *L, const char *mode, const char *x) {
 static void f_parser (lua_State *L, void *ud) {
   LClosure *cl;
   struct SParser *p = cast(struct SParser *, ud);
+  const char *mode = p->mode ? p->mode : "bt";
   int c = zgetc(p->z);  /* read first character */
 #ifndef PLUTO_DISABLE_COMPILED
   if (c == LUA_SIGNATURE[0]) {
-    checkmode(L, p->mode, "binary");
-    cl = luaU_undump(L, p->z, p->name);
+    int fixed = 0;
+    if (strchr(mode, 'B') != NULL)
+      fixed = 1;
+    else
+      checkmode(L, mode, "binary");
+    cl = luaU_undump(L, p->z, p->name, fixed);
   }
   else
 #endif
   {
-    checkmode(L, p->mode, "text");
+    checkmode(L, mode, "text");
     cl = luaY_parser(L, p->lexstate, p->z, &p->buff, &p->dyd, p->name, c);
   }
   lua_assert(cl->nupvalues == cl->p->sizeupvalues);

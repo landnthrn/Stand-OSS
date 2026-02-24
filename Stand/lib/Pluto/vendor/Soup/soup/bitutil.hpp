@@ -102,6 +102,7 @@ NAMESPACE_SOUP
 #endif
 		}
 
+#if SOUP_BITS >= 64
 		[[nodiscard]] static unsigned long getLeastSignificantSetBit(uint64_t mask) noexcept
 		{
 			SOUP_DEBUG_ASSERT(mask != 0); // UB!
@@ -112,9 +113,39 @@ NAMESPACE_SOUP
 			_BitScanForward64(&ret, mask);
 			return ret;
 #else
-			return __builtin_ctz(mask);
+			return __builtin_ctzll(mask);
 #endif
 		}
+#endif
+
+		[[nodiscard]] static unsigned int getNumTrailingZeros(uint16_t mask) noexcept
+		{
+			if (mask != 0)
+			{
+				return getLeastSignificantSetBit(mask);
+			}
+			return sizeof(mask) * 8;
+		}
+
+		[[nodiscard]] static unsigned int getNumTrailingZeros(uint32_t mask) noexcept
+		{
+			if (mask != 0)
+			{
+				return getLeastSignificantSetBit(mask);
+			}
+			return sizeof(mask) * 8;
+		}
+
+#if SOUP_BITS >= 64
+		[[nodiscard]] static unsigned int getNumTrailingZeros(uint64_t mask) noexcept
+		{
+			if (mask != 0)
+			{
+				return getLeastSignificantSetBit(mask);
+			}
+			return sizeof(mask) * 8;
+		}
+#endif
 
 		template <typename T>
 		static constexpr void unsetLeastSignificantSetBit(T& val)
@@ -124,18 +155,17 @@ NAMESPACE_SOUP
 
 		[[nodiscard]] static unsigned int getNumLeadingZeros(uint32_t mask) noexcept
 		{
-			unsigned int res = 32;
 			if (mask != 0)
 			{
 #if defined(_MSC_VER) && !defined(__clang__)
-				unsigned long ret;
-				_BitScanReverse(&ret, mask);
-				res -= ret;
+				unsigned long idx;
+				_BitScanReverse(&idx, mask);
+				return 31 - idx;
 #else
-				res = __builtin_clz(mask);
+				return __builtin_clz(mask);
 #endif
 			}
-			return res;
+			return 32;
 		}
 
 		[[nodiscard]] static unsigned int getMostSignificantSetBit(uint32_t mask) noexcept
@@ -143,27 +173,42 @@ NAMESPACE_SOUP
 			SOUP_DEBUG_ASSERT(mask != 0); // UB!
 
 #if defined(_MSC_VER) && !defined(__clang__)
-			unsigned long ret;
-			_BitScanReverse(&ret, mask);
-			return ret;
+			unsigned long idx;
+			_BitScanReverse(&idx, mask);
+			return idx;
 #else
- 			return 31 - __builtin_clz(mask);
+			return 31 - __builtin_clz(mask);
 #endif
 		}
 
-		[[nodiscard]] static uint32_t getNumSetBits(uint32_t i) noexcept
+		[[nodiscard]] static auto getNumSetBits(uint16_t i) noexcept
 		{
-#if defined(_MSC_VER) && !defined(__clang__)
-			// https://stackoverflow.com/a/109025
-			i = i - ((i >> 1) & 0x55555555);
-			i = (i & 0x33333333) + ((i >> 2) & 0x33333333);
-			i = (i + (i >> 4)) & 0x0F0F0F0F;
-			i *= 0x01010101;
-			return i >> 24;
+#if defined(_MSC_VER)
+			return __popcnt16(i);
 #else
 			return __builtin_popcount(i);
 #endif
 		}
+
+		[[nodiscard]] static auto getNumSetBits(uint32_t i) noexcept
+		{
+#if defined(_MSC_VER) && !defined(__clang__)
+			return __popcnt(i);
+#else
+			return __builtin_popcount(i);
+#endif
+		}
+
+#if SOUP_BITS >= 64
+		[[nodiscard]] static auto getNumSetBits(uint64_t i) noexcept
+		{
+#if defined(_MSC_VER) && !defined(__clang__)
+			return __popcnt64(i);
+#else
+			return __builtin_popcountll(i);
+#endif
+		}
+#endif
 
 		// https://stackoverflow.com/a/2602885
 		[[nodiscard]] static uint8_t reverse(uint8_t b) noexcept

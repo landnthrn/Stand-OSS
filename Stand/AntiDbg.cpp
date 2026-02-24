@@ -55,7 +55,7 @@ namespace Stand
 	{
 		if constexpr (isEnabled())
 		{
-			if (soup::os::getCurrentPeb()->BeingDebugged)
+			if (soup::os::getCurrentPeb()->BeingDebugged == 1) // Cherax sets this value to 3, the idea being that if it gets set to 0, they know an anti-debugger is being used.
 			{
 				apologiseInAdvance(2);
 				if (!passive)

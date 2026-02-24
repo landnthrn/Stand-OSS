@@ -32,7 +32,6 @@ NAMESPACE_SOUP
 	struct Asn1Sequence;
 
 	// data.container
-	class Buffer;
 	struct StructMap;
 
 	// data.json
@@ -42,6 +41,7 @@ NAMESPACE_SOUP
 	struct JsonInt;
 	struct JsonObject;
 	struct JsonString;
+	struct JsonTreeWriter;
 
 	// data.reflection
 	class drData;
@@ -160,6 +160,7 @@ NAMESPACE_SOUP
 	// net.tls
 	class SocketTlsHandshaker;
 	struct TlsClientHello;
+	struct TlsExtAlpn;
 
 	// net.web
 	class HttpRequest;
@@ -171,10 +172,10 @@ NAMESPACE_SOUP
 	struct WebSocketMessage;
 
 	// os
-	enum ControlInput : uint8_t;
 	struct HandleRaii;
 	class Module;
 	enum MouseButton : uint8_t;
+	class ProcessHandle;
 	class Thread;
 	struct Window;
 
@@ -189,6 +190,7 @@ NAMESPACE_SOUP
 	class Mixed;
 
 	// vis
+	struct BCanvas;
 	class Canvas;
 	struct FormattedText;
 	class QrCode;

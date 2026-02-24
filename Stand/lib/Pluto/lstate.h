@@ -1,9 +1,11 @@
-#pragma once
 /*
 ** $Id: lstate.h $
 ** Global State
 ** See Copyright Notice in lua.h
 */
+
+#ifndef lstate_h
+#define lstate_h
 
 #include "lua.h"
 
@@ -151,13 +153,14 @@ struct lua_longjmp;  /* defined in ldo.c */
 
 /* kinds of Garbage Collection */
 #define KGC_INC		0	/* incremental gc */
-#define KGC_GEN		1	/* generational gc */
+#define KGC_GENMINOR	1	/* generational gc in minor (regular) mode */
+#define KGC_GENMAJOR	2	/* generational in major mode */
 
 
 typedef struct stringtable {
-  TString **hash;
+  TString **hash;  /* array of buckets (linked lists of strings) */
   int nuse;  /* number of elements */
-  int size;
+  int size;  /* number of buckets */
 } stringtable;
 
 
@@ -256,25 +259,22 @@ struct CallInfo {
 typedef struct global_State {
   lua_Alloc frealloc;  /* function to reallocate memory */
   void *ud;         /* auxiliary data to 'frealloc' */
-  l_mem totalbytes;  /* number of bytes currently allocated - GCdebt */
-  l_mem GCdebt;  /* bytes allocated not yet compensated by the collector */
-  lu_mem GCestimate;  /* an estimate of the non-garbage memory in use */
-  lu_mem lastatomic;  /* see function 'genstep' in file 'lgc.c' */
+  lu_mem totalbytes;  /* number of bytes currently allocated */
+  l_obj totalobjs;  /* total number of objects allocated + GCdebt */
+  l_obj GCdebt;  /* objects counted but not yet allocated */
+  l_obj marked;  /* number of objects marked in a GC cycle */
+  l_obj GCmajorminor;  /* auxiliary counter to control major-minor shifts */
   stringtable strt;  /* hash table for strings */
   TValue l_registry;
   TValue nilvalue;  /* a nil value */
   unsigned int seed;  /* randomized seed for hashes */
+  lu_byte gcparams[LUA_GCPN];
   lu_byte currentwhite;
   lu_byte gcstate;  /* state of garbage collector */
   lu_byte gckind;  /* kind of GC running */
   lu_byte gcstopem;  /* stops emergency collections */
-  lu_byte genminormul;  /* control for minor generational collections */
-  lu_byte genmajormul;  /* control for major generational collections */
   lu_byte gcstp;  /* control whether GC is running */
   lu_byte gcemergency;  /* true if this is an emergency collection */
-  lu_byte gcpause;  /* size of pause between successive GCs */
-  lu_byte gcstepmul;  /* GC "speed" */
-  lu_byte gcstepsize;  /* (log2 of) GC granularity */
   GCObject *allgc;  /* list of all collectable objects */
   GCObject **sweepgc;  /* current position of sweep in list */
   GCObject *finobj;  /* list of collectable objects with finalizers */
@@ -304,15 +304,32 @@ typedef struct global_State {
   void *ud_warn;         /* auxiliary data to 'warnf' */
 #ifndef PLUTO_LUA_LINKABLE
   void* user_data;  /* a pointer to data you, the user, would like to specify */
-  bool compatible_switch : 1;
-  bool compatible_continue : 1;
-  bool compatible_enum : 1;
-  bool compatible_new : 1;
-  bool compatible_class : 1;
-  bool compatible_parent : 1;
-  bool compatible_export : 1;
-  bool compatible_try : 1;
-  bool compatible_catch : 1;
+
+  /*
+  ** Each non-compatible keyword has 2 bools here: "have_preference" and "preference".
+  ** "have_preference" declares that you would like to overwrite the default enable/disable state of a given keyword,
+  ** and "preference" declares if you would like it to be enabled or disabled.
+  ** For example: If have_preference_switch is true, and preference_switch is false, the 'switch' keyword will be disabled.
+  */
+  bool have_preference_switch : 1;
+  bool preference_switch : 1;
+  bool have_preference_continue : 1;
+  bool preference_continue : 1;
+  bool have_preference_enum : 1;
+  bool preference_enum : 1;
+  bool have_preference_new : 1;
+  bool preference_new : 1;
+  bool have_preference_class : 1;
+  bool preference_class : 1;
+  bool have_preference_parent : 1;
+  bool preference_parent : 1;
+  bool have_preference_export : 1;
+  bool preference_export : 1;
+  bool have_preference_try : 1;
+  bool preference_try : 1;
+  bool have_preference_catch : 1;
+  bool preference_catch : 1;
+
   void* scheduler;  /* internal use only; do not use this in your own code. */
 #endif
 #ifdef PLUTO_ETL_ENABLE
@@ -323,15 +340,24 @@ typedef struct global_State {
 #endif
 
   void setCompatibilityMode(bool b) noexcept {
-    compatible_switch = b;
-    compatible_continue = b;
-    compatible_enum = b;
-    compatible_new = b;
-    compatible_class = b;
-    compatible_parent = b;
-    compatible_export = b;
-    compatible_try = b;
-    compatible_catch = b;
+    have_preference_switch = true;
+    preference_switch = !b;
+    have_preference_continue = true;
+    preference_continue = !b;
+    have_preference_enum = true;
+    preference_enum = !b;
+    have_preference_new = true;
+    preference_new = !b;
+    have_preference_class = true;
+    preference_class = !b;
+    have_preference_parent = true;
+    preference_parent = !b;
+    have_preference_export = true;
+    preference_export = !b;
+    have_preference_try = true;
+    preference_try = !b;
+    have_preference_catch = true;
+    preference_catch = !b;
   }
 } global_State;
 
@@ -452,10 +478,11 @@ union GCUnion {
 #define obj2gco(v)	check_exp((v)->tt >= LUA_TSTRING, &(cast_u(v)->gc))
 
 
-/* actual number of total bytes allocated */
-#define gettotalbytes(g)	cast(lu_mem, (g)->totalbytes + (g)->GCdebt)
+/* actual number of total objects allocated */
+#define gettotalobjs(g)	((g)->totalobjs - (g)->GCdebt)
 
-LUAI_FUNC void luaE_setdebt (global_State *g, l_mem debt);
+
+LUAI_FUNC void luaE_setdebt (global_State *g, l_obj debt);
 LUAI_FUNC void luaE_freethread (lua_State *L, lua_State *L1);
 LUAI_FUNC CallInfo *luaE_extendCI (lua_State *L);
 LUAI_FUNC void luaE_shrinkCI (lua_State *L);
@@ -464,3 +491,7 @@ LUAI_FUNC void luaE_incCstack (lua_State *L);
 LUAI_FUNC void luaE_warning (lua_State *L, const char *msg, int tocont);
 LUAI_FUNC void luaE_warnerror (lua_State *L, const char *where);
 LUAI_FUNC int luaE_resetthread (lua_State *L, int status);
+
+
+#endif
+

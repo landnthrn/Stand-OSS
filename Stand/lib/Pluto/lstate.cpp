@@ -54,53 +54,17 @@ typedef struct LG {
 
 
 /*
-** A macro to create a "random" seed when a state is created;
-** the seed is used to randomize string hashes.
+** set GCdebt to a new value keeping the real number of allocated
+** objects (totalobjs - GCdebt) invariant and avoiding overflows in
+** 'totalobjs'.
 */
-#if !defined(luai_makeseed)
-
-#include <time.h>
-
-/*
-** Compute an initial seed with some level of randomness.
-** Rely on Address Space Layout Randomization (if present) and
-** current time.
-*/
-#define addbuff(b,p,e) \
-  { size_t t = cast_sizet(e); \
-    memcpy(b + p, &t, sizeof(t)); p += sizeof(t); }
-
-static unsigned int luai_makeseed (lua_State *L) {
-  char buff[3 * sizeof(size_t)];
-  unsigned int h = cast_uint(time(NULL));
-  int p = 0;
-  addbuff(buff, p, L);  /* heap variable */
-  addbuff(buff, p, &h);  /* local variable */
-  addbuff(buff, p, &lua_newstate);  /* public function */
-  lua_assert(p == sizeof(buff));
-  return luaS_hash(buff, p, h);
-}
-
-#endif
-
-
-/*
-** set GCdebt to a new value keeping the value (totalbytes + GCdebt)
-** invariant (and avoiding underflows in 'totalbytes')
-*/
-void luaE_setdebt (global_State *g, l_mem debt) {
-  l_mem tb = gettotalbytes(g);
+void luaE_setdebt (global_State *g, l_obj debt) {
+  l_obj tb = gettotalobjs(g);
   lua_assert(tb > 0);
-  if (debt < tb - MAX_LMEM)
-    debt = tb - MAX_LMEM;  /* will make 'totalbytes == MAX_LMEM' */
-  g->totalbytes = tb - debt;
+  if (debt > MAX_LOBJ - tb)
+    debt = MAX_LOBJ - tb;  /* will make 'totalobjs == MAX_LMEM' */
+  g->totalobjs = tb + debt;
   g->GCdebt = debt;
-}
-
-
-LUA_API int lua_setcstacklimit (lua_State *L, unsigned int limit) {
-  UNUSED(L); UNUSED(limit);
-  return LUAI_MAXCCALLS;  /* warning?? */
 }
 
 
@@ -168,7 +132,7 @@ void luaE_checkcstack (lua_State *L) {
   if (getCcalls(L) == LUAI_MAXCCALLS)
     luaG_runerror(L, "C stack overflow");
   else if (getCcalls(L) >= (LUAI_MAXCCALLS / 10 * 11))
-    luaD_throw(L, LUA_ERRERR);  /* error while handling stack error */
+    luaD_errerr(L);  /* error while handling stack error */
 }
 
 
@@ -217,13 +181,19 @@ static void freestack (lua_State *L) {
 */
 static void init_registry (lua_State *L, global_State *g) {
   /* create registry */
+  TValue aux;
   Table *registry = luaH_new(L);
   sethvalue(L, &g->l_registry, registry);
   luaH_resize(L, registry, LUA_RIDX_LAST, 0);
+  /* registry[1] = false */
+  setbfvalue(&aux);
+  luaH_setint(L, registry, 1, &aux);
   /* registry[LUA_RIDX_MAINTHREAD] = L */
-  setthvalue(L, &registry->array[LUA_RIDX_MAINTHREAD - 1], L);
+  setthvalue(L, &aux, L);
+  luaH_setint(L, registry, LUA_RIDX_MAINTHREAD, &aux);
   /* registry[LUA_RIDX_GLOBALS] = new table (table of globals) */
-  sethvalue(L, &registry->array[LUA_RIDX_GLOBALS - 1], luaH_new(L));
+  sethvalue(L, &aux, luaH_new(L));
+  luaH_setint(L, registry, LUA_RIDX_GLOBALS, &aux);
 }
 
 
@@ -277,7 +247,9 @@ static void close_state (lua_State *L) {
     luaC_freeallobjects(L);  /* just collect its objects */
   else {  /* closing a fully built state */
     L->ci = &L->base_ci;  /* unwind CallInfo list */
+    L->errfunc = 0;   /* stack unwind can "throw away" the error function */
     luaD_closeprotected(L, 1, LUA_OK);  /* close all upvalues */
+    L->top.p = L->stack.p + 1;  /* empty the stack to run finalizers */
     luaC_freeallobjects(L);  /* collect all objects */
 #if !SOUP_WASM
     if (g->scheduler) {
@@ -288,7 +260,8 @@ static void close_state (lua_State *L) {
   }
   luaM_freearray(L, G(L)->strt.hash, G(L)->strt.size);
   freestack(L);
-  lua_assert(gettotalbytes(g) == sizeof(LG));
+  lua_assert(g->totalbytes == sizeof(LG));
+  lua_assert(gettotalobjs(g) == 1);
   (*g->frealloc)(g->ud, fromstate(L), sizeof(LG), 0);  /* free main block */
 }
 
@@ -338,6 +311,7 @@ int luaE_resetthread (lua_State *L, int status) {
   if (status == LUA_YIELD)
     status = LUA_OK;
   L->status = LUA_OK;  /* so it can run __close metamethods */
+  L->errfunc = 0;   /* stack unwind can "throw away" the error function */
   status = luaD_closeprotected(L, 1, status);
   if (status != LUA_OK)  /* errors? */
     luaD_seterrorobj(L, status, L->stack.p + 1);
@@ -367,7 +341,7 @@ LUA_API int lua_resetthread (lua_State *L) {
 }
 
 
-LUA_API lua_State *lua_newstate (lua_Alloc f, void *ud) {
+LUA_API lua_State *lua_newstate (lua_Alloc f, void *ud, unsigned seed) {
   int i;
   lua_State *L;
   global_State *g;
@@ -387,7 +361,7 @@ LUA_API lua_State *lua_newstate (lua_Alloc f, void *ud) {
   g->warnf = NULL;
   g->ud_warn = NULL;
   g->mainthread = L;
-  g->seed = luai_makeseed(L);
+  g->seed = seed;
   g->gcstp = GCSTPGC;  /* no GC while building state */
   g->strt.size = g->strt.nuse = 0;
   g->strt.hash = NULL;
@@ -405,43 +379,73 @@ LUA_API lua_State *lua_newstate (lua_Alloc f, void *ud) {
   g->weak = g->ephemeron = g->allweak = NULL;
   g->twups = NULL;
   g->totalbytes = sizeof(LG);
+  g->totalobjs = 1;
+  g->marked = 0;
   g->GCdebt = 0;
-  g->lastatomic = 0;
   setivalue(&g->nilvalue, 0);  /* to signal that state is not yet built */
-  setgcparam(g->gcpause, LUAI_GCPAUSE);
-  setgcparam(g->gcstepmul, LUAI_GCMUL);
-  g->gcstepsize = LUAI_GCSTEPSIZE;
-  setgcparam(g->genmajormul, LUAI_GENMAJORMUL);
-  g->genminormul = LUAI_GENMINORMUL;
-  for (i=0; i < LUA_NUMTAGS; i++) g->mt[i] = NULL;
-  g->setCompatibilityMode(false);
+  setgcparam(g, PAUSE, LUAI_GCPAUSE);
+  setgcparam(g, STEPMUL, LUAI_GCMUL);
+  setgcparam(g, STEPSIZE, LUAI_GCSTEPSIZE);
+  setgcparam(g, MINORMUL, LUAI_GENMINORMUL);
+  setgcparam(g, MINORMAJOR, LUAI_MINORMAJOR);
+  setgcparam(g, MAJORMINOR, LUAI_MAJORMINOR);
+  for (i=0; i < LUA_NUMTYPES; i++) g->mt[i] = NULL;
+
 #ifdef PLUTO_COMPATIBLE_SWITCH
-  g->compatible_switch = true;
+  g->have_preference_switch = true;
+  g->preference_switch = false;
+#else
+  g->have_preference_switch = false;
 #endif
 #ifdef PLUTO_COMPATIBLE_CONTINUE
-  g->compatible_continue = true;
+  g->have_preference_continue = true;
+  g->preference_continue = false;
+#else
+  g->have_preference_continue = false;
 #endif
 #ifdef PLUTO_COMPATIBLE_ENUM
-  g->compatible_enum = true;
+  g->have_preference_enum = true;
+  g->preference_enum = false;
+#else
+  g->have_preference_enum = false;
 #endif
 #ifdef PLUTO_COMPATIBLE_NEW
-  g->compatible_new = true;
+  g->have_preference_new = true;
+  g->preference_new = false;
+#else
+  g->have_preference_new = false;
 #endif
 #ifdef PLUTO_COMPATIBLE_CLASS
-  g->compatible_class = true;
+  g->have_preference_class = true;
+  g->preference_class = false;
+#else
+  g->have_preference_class = false;
 #endif
 #ifdef PLUTO_COMPATIBLE_PARENT
-  g->compatible_parent = true;
+  g->have_preference_parent = true;
+  g->preference_parent = false;
+#else
+  g->have_preference_parent = false;
 #endif
 #ifdef PLUTO_COMPATIBLE_EXPORT
-  g->compatible_export = true;
+  g->have_preference_export = true;
+  g->preference_export = false;
+#else
+  g->have_preference_export = false;
 #endif
 #ifdef PLUTO_COMPATIBLE_TRY
-  g->compatible_try = true;
+  g->have_preference_try = true;
+  g->preference_try = false;
+#else
+  g->have_preference_try = false;
 #endif
 #ifdef PLUTO_COMPATIBLE_CATCH
-  g->compatible_catch = true;
+  g->have_preference_catch = true;
+  g->preference_catch = false;
+#else
+  g->have_preference_catch = false;
 #endif
+
   g->scheduler = nullptr;
 #ifdef PLUTO_ETL_ENABLE
   g->deadline = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count() + PLUTO_ETL_NANOS;
