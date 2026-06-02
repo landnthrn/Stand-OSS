@@ -6763,20 +6763,27 @@ namespace Stand::hooks
 
 	bool is_valid_model_ped(int32_t model)
 	{
-		if (STREAMING::IS_MODEL_A_PED(model))
+		switch (model)
 		{
-			switch (model)
-			{
-			case ATSTRINGHASH("slod_human"):
-			case ATSTRINGHASH("slod_large_quadped"):
-			case ATSTRINGHASH("slod_small_quadped"):
-				break;
-
-			default:
-				return true;
-			}
+		case ATSTRINGHASH("hash_69a2a740_gwzmxns_collision"):
+		case ATSTRINGHASH("hash_00007ff7_bgwtezih_collision"):
+		case ATSTRINGHASH("hash_909aa740_krgqxch_collision"):
+			return false;
 		}
-		return false;
+
+		if (!STREAMING::IS_MODEL_A_PED(model))
+			return true;
+
+		switch (model)
+		{
+		case ATSTRINGHASH("slod_human"):
+		case ATSTRINGHASH("slod_large_quadped"):
+		case ATSTRINGHASH("slod_small_quadped"):
+			return false;
+
+		default:
+			return true;
+		}
 	}
 
 	bool is_valid_model_object(int32_t model)
