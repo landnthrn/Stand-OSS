@@ -6469,10 +6469,18 @@ namespace Stand::hooks
 				if (train_tree->train_game_state.applies)
 				{
 					if (train_tree->train_game_state.m_TrackID != 1 // Signed, but game can deal with negative numbers, just not overflow.
-						&& (train_tree->train_game_state.m_TrackID < 0 || train_tree->train_game_state.m_TrackID > 12 && train_tree->train_game_state.m_IsEngine) // Actually, unless it's an engine, then CNetObjTrain::Update's call to CTrain::SetTrackActive will write to arbitrary memory.
-						)
+						&& (train_tree->train_game_state.m_TrackID < 0 || train_tree->train_game_state.m_TrackID > 28 && train_tree->train_game_state.m_IsEngine) // Actually, unless it's an engine, then CNetObjTrain::Update's call to CTrain::SetTrackActive will write to arbitrary memory.
+						) //																					  ^^^ as of 2nd of june 2026, array size = 29
 					{
-						sync_tally.add(FlowEvent::SE_CRASH, "T9");
+                          sync_tally.add(FlowEvent::SE_CRASH, "T9");
+							// Log the offending TrackID for diagnostics
+							__try
+							{
+								g_logger.log(fmt::format("T9: train_game_state.m_TrackID = {}", train_tree->train_game_state.m_TrackID));
+							}
+							__EXCEPTIONAL()
+							{
+							}
 						if (sync_tally.reactions & REACTION_BLOCK)
 						{
 							train_tree->train_game_state.m_IsEngine = false;
@@ -6499,18 +6507,26 @@ namespace Stand::hooks
 					}
 
 					// Again signed values where the game handles underflow but not overflow.
-					/*if (train_tree->train_game_state.m_TrainConfigIndex > 28
+					if (train_tree->train_game_state.m_TrainConfigIndex > 255 // safe ig ts jumps high sometimes?
 						|| train_tree->train_game_state.m_CarriageConfigIndex > 28
 						)
 					{
 						sync_tally.add(FlowEvent::SE_CRASH, "TD");
+						__try
+						{
+							g_logger.log(fmt::format("TD: train_game_state.m_TrainConfigIndex = {}", train_tree->train_game_state.m_TrainConfigIndex));
+							g_logger.log(fmt::format("TD: train_game_state.m_CarriageConfigIndex = {}", train_tree->train_game_state.m_CarriageConfigIndex));
+						}
+						__EXCEPTIONAL()
+						{
+						}
 						if (sync_tally.reactions & REACTION_BLOCK)
 						{
 							train_tree->train_game_state.m_TrainConfigIndex = -1;
 							train_tree->train_game_state.m_CarriageConfigIndex = -1;
 							ret = false;
 						}
-					}*/
+					}
 				}
 			}
 		}
@@ -6813,7 +6829,7 @@ namespace Stand::hooks
 			auto veh = static_cast<CVehicle*>(obj->game_obj);
 			SOUP_IF_UNLIKELY (!veh->GetSubHandling())
 			{
-#if false // Might not always be initialised from give_control_event
+#if true // Might not always be initialised from give_control_event
 				sync_tally.add(FlowEvent::SE_CRASH, "PV");
 #else
 				sync_src.getAndApplyReactionsIn(FlowEvent::SE_CRASH, "PV");
