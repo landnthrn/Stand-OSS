@@ -226,7 +226,7 @@ inline SOUP_TUNABLE(uint32_t, GSBD_FM_IMPORTANT_ARRAY_OFFSET) =								410 + 4; 
 inline SOUP_TUNABLE(uint32_t, GLOBAL_INTERACT_SIZE) =										19;
 inline SOUP_TUNABLE(uint32_t, GLOBAL_INTERACT_iSceneId) =									3;
 
-inline SOUP_TUNABLE(uint32_t, GPBD_FM_4_SIZE) =												306;
+inline SOUP_TUNABLE(uint32_t, GPBD_FM_4_SIZE) =												315;
 inline SOUP_TUNABLE(uint32_t, GPBD_FM_4_PICKUP_REQUESTS) =									102 + 21; // = SCRIPT::GET_HASH_OF_THIS_SCRIPT_NAME();
 inline SOUP_TUNABLE(uint32_t, GPBD_FM_4_PICKUP_REQUESTS_SIZE) =								14;
 
