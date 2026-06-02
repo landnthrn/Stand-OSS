@@ -2954,7 +2954,7 @@ namespace Stand
 					{
 						if (root_state != GUI_FREEONLINE)
 						{
-							opened = false;
+							//opened = false;
 						}
 					}
 				}

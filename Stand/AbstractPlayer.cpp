@@ -401,7 +401,7 @@ namespace Stand
 	AbstractPlayer AbstractPlayer::getNextHost()
 	{
 		AbstractPlayer best_candidate = AbstractPlayer::invalid();
-		const auto list = AbstractPlayer::listAll();
+		/*const auto list = AbstractPlayer::listAll();
 		if (list.size() >= 2)
 		{
 			const auto comp = host_queue_sort_algos[(*pointers::network_session)->host_queue_sort_algo];
@@ -417,6 +417,7 @@ namespace Stand
 				}
 			}
 		}
+		*/
 		return best_candidate;
 	}
 
@@ -2287,7 +2288,7 @@ if (cmd->flags & (1 << id)) \
 		// If we're host, gg
 		if (g_player.isHost())
 		{
-			kickHost(isKnownAdvertiser() ? BATTLEYE_BAN : DESYNC);
+			kickHost(DESYNC);
 			return;
 		}
 
@@ -2755,58 +2756,12 @@ if (cmd->flags & (1 << id)) \
 
 	bool AbstractPlayer::checkAggressiveAction() const
 	{
-#if BAD_BOY_ENABLED
-		if (auto cmd = getCommand())
-		{
-			if (cmd->classifier.hasNonPreemptiveDetectionsThatAllowAggressiveReaction()
-				|| cmd->aggressive_action_warranted
-				)
-			{
-				return true;
-			}
-			if (cmd->hasStandUserHandshakeFinished())
-			{
-				if (cmd->isMarkedAsStandUser() // Marked as a Stand user?
-					&& !(cmd->dp_flags & DPFLAG_COLOADING) // not co-loading?
-#ifdef STAND_DEBUG
-					&& (cmd->dp_flags & DPFLAG_SUION) // not "S.U.I. Off"?
-#endif
-					&& GET_MILLIS_SINCE(cmd->discovery) <= 15000 // target only joined recently?
-					)
-				{
-					g_gui.putInBadBoyTimeout();
-					return false;
-				}
-				return true;
-			}
-		}
-		return false;
-#else
 		return true;
-#endif
 	}
 
 	bool AbstractPlayer::canUseUnblockableKick(bool karma_ourselves) const
 	{
-#if ASSUME_NO_RID_SPOOFING
-		if (is_stand_dev_rid(getRockstarId()))
-		{
-			if (karma_ourselves
-				&& ColoadMgr::coloading_with_any_menu // Only karma if we're coloading, since we want to prevent the coloaded menu followup kick once Stand refuses.
-				)
-			{
-				TransitionHelper::beAlone();
-			}
-			return false;
-		}
 		return true;
-#else
-		CommandPlayer* const command = getCommand();
-		return command != nullptr
-			&& command->hasStandUserHandshakeFinished()
-			&& !(command->dp_flags & DPFLAG_DEVDBG)
-			;
-#endif
 	}
 
 	void AbstractPlayer::kickLoveLetter(bool call_pre_remove) const
@@ -3210,10 +3165,6 @@ if (cmd->flags & (1 << id)) \
 
 	bool AbstractPlayer::isKnownAdvertiser() const
 	{
-		if (auto gi = getGamerInfoNoFallback())
-		{
-			return gi->isKnownAdvertiser();
-		}
 		return false;
 	}
 

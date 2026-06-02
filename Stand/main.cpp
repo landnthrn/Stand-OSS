@@ -1446,13 +1446,13 @@ namespace Stand
 		{
 			g_hooking.CEventGroupScriptNetwork_DispatchEvent_hook.setTarget(*p.add(24).rip().add(8).as<void**>());
 		});
-		BATCH_ADD("BX", "74 1D 4C 8D 05 ? ? ? ? 0F B7 C1", [](soup::Pointer p)
+		BATCH_ADD("BX", "74 ? 0F B7 C1 3D", [](soup::Pointer p)
 		{
-			pointers::blips = p.add(5).rip().as<CMiniMapBlip**>();
+			pointers::blips = p.add(0xC).rip().as<CMiniMapBlip**>();
 		});
-		BATCH_ADD("BY", "78 13 8B D1 48 8B 0D ? ? ? ? E8", [](soup::Pointer p)
+		BATCH_ADD("BY", "74 ? 48 8B 0D ? ? ? ? 48 8B D7 E8 ? ? ? ? 48 8B C7 48 8B 5C 24 ? 48 83 C4 ? 5F C3 90 69 48 ? ? ? ? ? 48 83 EC ? 8B DA 48 8B F9 E8 ? ? ? ? F6 C3 ? 74 ? 48 8B CF", [](soup::Pointer p)
 		{
-			pointers::cam_pool = p.add(7).rip().as<rage::fwPool<camBaseCamera>**>();
+			pointers::cam_pool = p.add(2).rip().as<rage::fwPool<camBaseCamera>**>();
 		});
 		BATCH_ADD("BZ", "8B 15 ? ? ? ? 4C 8B 43 20 48 8B 05", [](soup::Pointer p)
 		{
@@ -2949,15 +2949,15 @@ namespace Stand
 			if (bad_state != 0)
 			{
 				// 1 & 9 are unused
-				if (bad_state >= 10 || ++st.bad_state_unload == 15)
+				if (bad_state > 0 || ++st.bad_state_unload == 15)
 				{
 					// This will brick future attempts to update the grid if a content update is not queued right now
-					g_menu_grid.content_update_queued = true;
+					//g_menu_grid.content_update_queued = true;
 
 					g_logger.log(fmt::format(fmt::runtime(soup::ObfusString("It looks like Stand is in a bad state ({})").str()), bad_state));
 					//g_auth.reportEvent("D1", fmt::to_string(bad_state));
 
-					finishRunningLoop;
+					//finishRunningLoop;
 				}
 			}
 			else
@@ -3010,7 +3010,7 @@ namespace Stand
 							|| is_different_session
 							)
 						{
-							g_auth.sendHeartbeat(session);
+							//g_auth.sendHeartbeat(session);
 						}
 						if (is_different_session)
 						{
@@ -3026,7 +3026,7 @@ namespace Stand
 					{
 						if (get_seconds_since_unix_epoch() >= g_auth.next_heartbeat)
 						{
-							g_auth.sendHeartbeat(session);
+							//g_auth.sendHeartbeat(session);
 						}
 					}
 				}

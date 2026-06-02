@@ -6468,8 +6468,8 @@ namespace Stand::hooks
 
 				if (train_tree->train_game_state.applies)
 				{
-					if (train_tree->train_game_state.m_TrackID >= 12 // Signed, but game can deal with negative numbers, just not overflow.
-						|| (train_tree->train_game_state.m_TrackID < 0 && train_tree->train_game_state.m_IsEngine) // Actually, unless it's an engine, then CNetObjTrain::Update's call to CTrain::SetTrackActive will write to arbitrary memory.
+					if (train_tree->train_game_state.m_TrackID != 1 // Signed, but game can deal with negative numbers, just not overflow.
+						&& (train_tree->train_game_state.m_TrackID < 0 || train_tree->train_game_state.m_TrackID > 12 && train_tree->train_game_state.m_IsEngine) // Actually, unless it's an engine, then CNetObjTrain::Update's call to CTrain::SetTrackActive will write to arbitrary memory.
 						)
 					{
 						sync_tally.add(FlowEvent::SE_CRASH, "T9");
@@ -6499,18 +6499,18 @@ namespace Stand::hooks
 					}
 
 					// Again signed values where the game handles underflow but not overflow.
-					if (train_tree->train_game_state.m_TrainConfigIndex > 28
+					/*if (train_tree->train_game_state.m_TrainConfigIndex > 28
 						|| train_tree->train_game_state.m_CarriageConfigIndex > 28
 						)
 					{
 						sync_tally.add(FlowEvent::SE_CRASH, "TD");
 						if (sync_tally.reactions & REACTION_BLOCK)
 						{
-							/*train_tree->train_game_state.m_TrainConfigIndex = -1;
-							train_tree->train_game_state.m_CarriageConfigIndex = -1;*/
+							train_tree->train_game_state.m_TrainConfigIndex = -1;
+							train_tree->train_game_state.m_CarriageConfigIndex = -1;
 							ret = false;
 						}
-					}
+					}*/
 				}
 			}
 		}

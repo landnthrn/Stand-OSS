@@ -1027,18 +1027,45 @@ namespace Stand
 				auto* auth = secret->createChild<CommandList>(LIT_OBF("Auth"));
 
 				auth->createChild<CommandLambdaAction>(LIT_OBF("Log Out"), CMDNAMES(), NOLABEL, &Auth::logOutManual, CMDFLAGS_LIST | CMDFLAG_TEMPORARY);
-				/*auth->createChild<CommandLambdaAction>(LIT("Switch To Basic Edition"), CMDNAMES(), NOLABEL, [](Click& click)
+				auth->createChild<CommandLambdaAction>(LIT("Switch To Basic Edition"), CMDNAMES(), NOLABEL, [](Click& click)
 				{
-					g_relay.sendLineAsync("as reqelv 1");
-				}, COMMANDFLAG_TEMPORARY);
+						g_gui.unlock_recover_state = 2;
+						g_auth.license_permissions = LICPERM_BASIC;
+						g_gui.root_state = GUI_BASIC;
+						g_gui.setApplicableNonFreeRootStateValue();
+						g_gui.updateRootName();
+						CommandDiscord::instance->update();
+						CommandRootName::instance->update();
+						g_gui.recursivelyApplyActiveState();
+						g_gui.removeTab(g_gui.getActivateTab());
+						RootMgr::updateRootState();
+				});
 				auth->createChild<CommandLambdaAction>(LIT("Switch To Regular Edition"), CMDNAMES(), NOLABEL, [](Click& click)
 				{
-					g_relay.sendLineAsync("as reqelv 2");
-				}, COMMANDFLAG_TEMPORARY);
+						g_gui.unlock_recover_state = 2;
+						g_auth.license_permissions = LICPERM_REGULAR;
+						g_gui.root_state = GUI_REGULAR;
+						g_gui.setApplicableNonFreeRootStateValue();
+						g_gui.updateRootName();
+						CommandDiscord::instance->update();
+						CommandRootName::instance->update();
+						g_gui.recursivelyApplyActiveState();
+						g_gui.removeTab(g_gui.getActivateTab());
+						RootMgr::updateRootState();
+				});
 				auth->createChild<CommandLambdaAction>(LIT("Switch To Ultimate Edition"), CMDNAMES(), NOLABEL, [](Click& click)
 				{
-					g_relay.sendLineAsync("as reqelv 3");
-				}, COMMANDFLAG_TEMPORARY);*/
+						g_gui.unlock_recover_state = 2;
+						g_auth.license_permissions = LICPERM_ULTIMATE;
+						g_gui.root_state = GUI_ULTIMATE;
+						g_gui.setApplicableNonFreeRootStateValue();
+						g_gui.updateRootName();
+						CommandDiscord::instance->update();
+						CommandRootName::instance->update();
+						g_gui.recursivelyApplyActiveState();
+						g_gui.removeTab(g_gui.getActivateTab());
+						RootMgr::updateRootState();
+				});
 				auth->createChild<CommandLambdaAction>(LIT_OBF("Discover Activation Key + Log In"), CMDNAMES(), NOLABEL, [](Click& click)
 				{
 					if (g_auth.discoverActivationKey())
