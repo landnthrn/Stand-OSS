@@ -137,7 +137,7 @@ namespace Stand
 				SessionSpoofing::onTick();
 				if (g_auth.license_permissions == LICPERM_ULTIMATE)
 				{
-					RemoteGamer::onTickUltimate();
+					//RemoteGamer::onTickUltimate();
 				}
 			}
 		}
