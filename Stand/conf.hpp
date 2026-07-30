@@ -3,7 +3,7 @@
 // Config
 
 #define STAND_NAME "Stand"
-#define STAND_VERSION_TARGET "26.1.1"
+#define STAND_VERSION_TARGET "26.3.1"
 //#define STAND_RN_VERSION_TARGET "💯"
 //#define STAND_BRANCH "updating1"
 

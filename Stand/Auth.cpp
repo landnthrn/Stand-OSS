@@ -43,7 +43,7 @@
 #include "Tunables.hpp"
 #include "Util.hpp"
 
-#define AUTH_DEBUG true
+#define AUTH_DEBUG false
 
 namespace Stand
 {
@@ -125,7 +125,7 @@ namespace Stand
 				}
 			}
 		}
-		return LICPERM_ULTIMATE;
+		return perms;
 	}
 
 	bool Auth::isLatestVersion() const noexcept
@@ -473,7 +473,7 @@ namespace Stand
 
 	void Auth::tryActivationKey()
 	{
-		//sendHeartbeat(SessionSpoofing::getRealSessionId());
+		sendHeartbeat(SessionSpoofing::getRealSessionId());
 	}
 
 	static void processHeartbeatRequestFailure(std::string&& reason)
@@ -493,7 +493,7 @@ namespace Stand
 
 	using HwidEncoding = soup::CustomEncoding<"S15WUZJYIG4K069EDMVTLOQ7PHBFX8RNC3A2">;
 
-	/*void Auth::sendHeartbeat(uint64_t session) // OBFUS!
+	void Auth::sendHeartbeat(uint64_t session) // OBFUS!
 	{
 		if (g_tunables.version == 0)
 		{
@@ -507,7 +507,7 @@ namespace Stand
 			unixtime_t expiry = get_seconds_since_unix_epoch() + perm_valid_for;
 
 			soup::JsonObject obj{};
-			obj.add("v", "26.3.1");
+			obj.add("v", STAND_VERSION);
 			obj.add("a", activation_key_to_try);
 			obj.add("x", expiry);
 			obj.add("i", GamerIdentifierV4::fromGamerInfo(*pointers::rlPresence_m_ActingGamerInfo).toString());
@@ -549,7 +549,7 @@ namespace Stand
 			b.dispatch();
 			g_auth.sent_next_heartbeat = true;
 		}
-	}*/
+	}
 
 	bool Auth::isDifferentSession(uint64_t session) const
 	{

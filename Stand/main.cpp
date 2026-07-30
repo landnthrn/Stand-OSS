@@ -3010,7 +3010,7 @@ namespace Stand
 							|| is_different_session
 							)
 						{
-							//g_auth.sendHeartbeat(session);
+							g_auth.sendHeartbeat(session);
 						}
 						if (is_different_session)
 						{
@@ -3026,7 +3026,7 @@ namespace Stand
 					{
 						if (get_seconds_since_unix_epoch() >= g_auth.next_heartbeat)
 						{
-							//g_auth.sendHeartbeat(session);
+							g_auth.sendHeartbeat(session);
 						}
 					}
 				}
