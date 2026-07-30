@@ -37,3 +37,9 @@ Virtualizer/
 
 # Misc
 Changelog.md
+
+# Local unzipped state backups (zips are tracked)
+building/different-state-backups/auth-default-vs-patched/default/
+building/different-state-backups/auth-default-vs-patched/patched/
+building/different-state-backups/release-post-build-compiler-calls/with-virtualizer-and-upx/
+building/different-state-backups/release-post-build-compiler-calls/without-virtualizer-and-upx/
