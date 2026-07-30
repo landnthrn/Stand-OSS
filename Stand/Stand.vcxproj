@@ -26,19 +26,19 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Dev Build|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <WholeProgramOptimization>false</WholeProgramOptimization>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -139,7 +139,7 @@
       <Command>cd .. &amp;&amp; cd lang &amp;&amp; php update.php</Command>
     </PreBuildEvent>
     <PostBuildEvent>
-      <Command>cd .. &amp;&amp; php xormagics.php &amp;&amp; move /Y Stand\bin\Release\Stand.dll Stand\bin\Release\Stand_unprotected.dll &amp;&amp;  move /Y Stand\bin\Release\Stand.map Stand\bin\Release\Stand_unprotected.map &amp;&amp; ISaidNoRTTI\bin\ISaidNoRTTI.exe Stand\bin\Release\Stand_unprotected.dll &amp;&amp; "Virtualizer\Virtualizer.exe" /protect Stand.cv /shareconsole &amp;&amp; upx.exe Stand\bin\Release\Stand_uncompressed.dll -o Stand\bin\Release\Stand.dll -9 --overlay=strip --compress-exports=0</Command>
+      <Command>cd .. &amp;&amp; ISaidNoRTTI\bin\ISaidNoRTTI.exe Stand\bin\Release\Stand.dll</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Dev Build|x64'">
